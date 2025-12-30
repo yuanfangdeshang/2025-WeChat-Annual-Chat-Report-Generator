@@ -6,19 +6,11 @@ A_report_generator.py - 微信年度报告生成器
 """
 
 from datetime import datetime
-from statistics import mean, median, stdev
+from statistics import mean, median
 from A_batch_analyzer import batch_analyze
 import random
 import math
 
-# 导入样式和脚本模块
-try:
-    from A_styles import get_css_styles
-    from A_scripts import get_js_scripts
-    USE_MODULES = True
-except ImportError:
-    USE_MODULES = False
-    print("⚠️ 未找到模块文件，使用内置样式")
 
 
 # ===== 姓名加密/脱敏工具 =====
@@ -106,6 +98,13 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
     
     def display_message(content):
         return mask_message(content, mask_mode)
+    
+    # 清理昵称 - 只保留中英文字母汉字数字
+    def clean_nickname(name):
+        import re
+        # 只保留中文、英文字母、数字
+        cleaned = re.sub(r'[^\u4e00-\u9fa5a-zA-Z0-9]', '', name)
+        return cleaned if cleaned else name  # 如果清理后为空，返回原名
     
     # 读取背景音乐并转为base64
     bgm_base64 = ''
@@ -195,12 +194,18 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
     # ============ 开场动画数据准备 ============
     def prepare_intro_animation_data():
         """准备数据驱动的开场动画所需数据"""
-        # 1. 收集常用聊天片段/关键词
+        # 1. 收集有信息量的聊天片段（不要虚词）
         chat_snippets = [
-            '在吗？', '好的', '哈哈哈', '😂', '晚安', '早安', '好的好的',
-            '收到', '谢谢', '辛苦了', '加油', '🌙', '❤️', '👍', '666',
-            '今天', '明天', '一起', '吃饭', '回家', '睡觉', '工作',
-            '开心', '想你', '等你', '来了', '走了', '到了', '好久不见'
+            '今天吃什么', '出门了吗', '到家了', '下班了', '周末有空吗',
+            '明天见', '路上注意安全', '早点休息', '吃饭了吗', '在干嘛',
+            '想你了', '好久不见', '什么时候回来', '我到了', '等你呢',
+            '生日快乐', '新年快乐', '考试加油', '恭喜恭喜', '辛苦了',
+            '一起吃饭', '出来玩', '看电影吗', '打游戏吗', '逛街去',
+            '发红包', '谢谢老板', '太好笑了', '笑死我了', '绝了',
+            '真的假的', '不是吧', '救命', '啊啊啊', '冲冲冲',
+            '晚安好梦', '早上好', '中午好', '睡了吗', '还没睡呢',
+            '今天好累', '终于放假', '要上班了', '不想起床', '困死了',
+            '好好吃', '太香了', '推荐一下', '安利给你', '必须试试'
         ]
         
         # 2. 从数据中提取实际常用表情
@@ -286,6 +291,9 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         
         # 5. 构建JSON数据
         import json
+        # 清理昵称用于显示 - 使用传入的my_name参数
+        owner_name = clean_nickname(my_name) if my_name and str(my_name).strip() else '朋友'
+        
         animation_data = {
             'snippets': chat_snippets[:30],
             'emojis': [e[0] for e in top_emojis[:8]] if top_emojis else ['😂', '🥰', '👍', '❤️', '😊'],
@@ -300,7 +308,8 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 'care': total_care,
                 'sessions': total_sessions
             },
-            'bestFriend': best_friend_name
+            'bestFriend': best_friend_name,
+            'ownerName': owner_name
         }
         
         return json.dumps(animation_data, ensure_ascii=False)
@@ -446,6 +455,16 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         avg_len = sum(len_list) / len(len_list) if len_list else 0
         length_score = min(1, avg_len / 50)
         
+        # 维度5: 回复速度
+        reply_times = [c.get('reply_me_median', 0) for c in private_chats if c.get('reply_me_median', 0) > 0]
+        avg_reply = sum(reply_times) / len(reply_times) if reply_times else 120
+        # 越快得分越高：30秒内=100%, 300秒=0%
+        reply_score = max(0, min(1, 1 - (avg_reply - 30) / 270))
+        
+        # 维度6: 关心指数
+        total_care = sum(c.get('care_them', 0) for c in private_chats)
+        care_score = min(1, total_care / 100)
+        
         # 生成人格类型
         p1 = '主动出击' if initiative_score > 0.5 else '静待花开'
         p2 = '深夜灵魂' if night_score > 0.4 else '阳光使者'
@@ -483,7 +502,9 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 'initiative': int(initiative_score * 100),
                 'night': int(night_score * 100),
                 'breadth': int(breadth_score * 100),
-                'length': int(length_score * 100)
+                'length': int(length_score * 100),
+                'reply': int(reply_score * 100),
+                'care': int(care_score * 100)
             }
         }
     
@@ -635,6 +656,16 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                     <div class="bar-track"><div class="bar-fill depth" style="width:{personality['scores']['length']}%"></div></div>
                     <span class="bar-value">{personality['scores']['length']}%</span>
                 </div>
+                <div class="bar-item">
+                    <span class="bar-label">秒回速度</span>
+                    <div class="bar-track"><div class="bar-fill reply" style="width:{personality['scores']['reply']}%"></div></div>
+                    <span class="bar-value">{personality['scores']['reply']}%</span>
+                </div>
+                <div class="bar-item">
+                    <span class="bar-label">关心指数</span>
+                    <div class="bar-track"><div class="bar-fill care" style="width:{personality['scores']['care']}%"></div></div>
+                    <span class="bar-value">{personality['scores']['care']}%</span>
+                </div>
             </div>
         </div>'''
     
@@ -722,15 +753,19 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 y = padding['top'] + chart_height - (val / max_val * chart_height) if max_val else padding['top'] + chart_height
                 points.append(f'{x},{y}')
             
-            # 折线
-            lines_svg += f'<polyline points="{" ".join(points)}" fill="none" stroke="{friend["color"]}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="trend-line" style="animation-delay:{fi * 0.2}s"/>'
+            # 折线 - 每条线延迟，等点出现后再画
+            lines_svg += f'<polyline points="{" ".join(points)}" fill="none" stroke="{friend["color"]}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="trend-line" style="animation-delay:{2.0 + fi * 0.5}s"/>'
             
-            # 数据点
+            # 数据点 - 先出现
+            dot_index = 0
             for mi, val in enumerate(friend['data']):
                 if val > 0:
                     x = padding['left'] + mi * x_step
                     y = padding['top'] + chart_height - (val / max_val * chart_height) if max_val else padding['top'] + chart_height
-                    lines_svg += f'<circle cx="{x}" cy="{y}" r="4" fill="{friend["color"]}" class="trend-dot"><title>{month_labels[mi]}: {val}条</title></circle>'
+                    # 动画延迟：点先出现，每条线的延迟 + 每个点的序号
+                    delay = fi * 0.3 + dot_index * 0.05
+                    lines_svg += f'<circle cx="{x}" cy="{y}" r="4" fill="{friend["color"]}" class="trend-dot" style="animation-delay:{delay}s"><title>{month_labels[mi]}: {val}条</title></circle>'
+                    dot_index += 1
             
             # 图例
             legend_html += f'<span class="trend-legend-item"><span class="trend-legend-color" style="background:{friend["color"]}"></span>{friend["name"]}</span>'
@@ -1003,7 +1038,6 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         total_msgs = sum(g.get('total_msgs', 0) for g in group_chats)
         total_my_msgs = sum(g.get('my_msgs', 0) for g in group_chats)
         total_members = sum(g.get('member_count', 0) for g in group_chats)
-        avg_daily = sum(g.get('avg_daily', 0) for g in group_chats)
         
         # 你是话唠王的群数量
         king_count = len([g for g in group_chats if g.get('my_rank') == 1])
@@ -2232,21 +2266,13 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
             <div class="rhythm-hour" style="--angle:{angle}deg;--color:{color}" title="{h}:00 - {count:,}条">
                 <span class="rhythm-hour-label">{h}</span>
             </div>'''
-        ring_html += '<div class="rhythm-ring-center">🕐</div></div>'
         
-        # 根据peak_hour确定所属时段和更合理的表述
-        if peak_hour >= 23 or peak_hour < 6:
-            period_name = '深夜'
-            period_range = '23:00-6:00'
-        elif peak_hour >= 6 and peak_hour < 12:
-            period_name = '上午'
-            period_range = '6:00-12:00'
-        elif peak_hour >= 12 and peak_hour < 18:
-            period_name = '下午'
-            period_range = '12:00-18:00'
-        else:
-            period_name = '晚间'
-            period_range = '18:00-23:00'
+        # 显示最活跃的具体时间点
+        peak_time = f'{peak_hour}:00'
+        peak_count = hourly_totals.get(peak_hour, 0)
+        
+        # 把活跃时段信息放在圆环中心 - 显示具体时间点
+        ring_html += f'<div class="rhythm-ring-center"><div class="rhythm-peak"><div class="rhythm-peak-label">最活跃时间</div><div class="rhythm-peak-value">{peak_time}</div><div class="rhythm-peak-range">{peak_count:,}条消息</div></div></div></div>'
         
         # 生成洞察文案 - 使用时段名称而非精确小时
         insight = ''
@@ -2275,11 +2301,6 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
             <div class="rhythm-main">
                 <div class="rhythm-visual">
                     {ring_html}
-                    <div class="rhythm-peak">
-                        <div class="rhythm-peak-label">最活跃时段</div>
-                        <div class="rhythm-peak-value">{period_name}</div>
-                        <div class="rhythm-peak-range">{period_range}</div>
-                    </div>
                 </div>
                 
                 <div class="rhythm-periods">
@@ -2510,7 +2531,7 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
 
     # ============ 年度来信 ============
     def make_annual_letter():
-        """生成年度来信 - 给最好朋友的一封信（信封拆开动画）"""
+        """生成年度来信 - 最好朋友写给我的一封信（信封拆开动画）"""
         if not sorted_private:
             return '<div class="empty">暂无私聊数据</div>'
         
@@ -2527,13 +2548,13 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         care_them = best.get('care_them', 0)
         care_me = best.get('care_me', 0)
         
-        # 计算回复速度
-        reply_time = best.get('reply_them_median', 0)
+        # 我的回复速度（从好友视角看，是"你"回复"我"的速度）
+        my_reply_time = best.get('reply_me_median', 0)
         reply_desc = ''
-        if reply_time and reply_time < 60:
-            reply_desc = f'每次你发消息，我平均 <strong>{int(reply_time)}秒</strong> 就回复'
-        elif reply_time and reply_time < 300:
-            reply_desc = f'每次你发消息，我都尽快回复'
+        if my_reply_time and my_reply_time < 60:
+            reply_desc = f'每次我发消息，你平均 <strong>{int(my_reply_time)}秒</strong> 就回复了'
+        elif my_reply_time and my_reply_time < 300:
+            reply_desc = f'每次我发消息，你总是很快就回复'
         
         # 找出聊天最多的月份
         monthly = best.get('monthly', {})
@@ -2553,55 +2574,59 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         # 计算平均每天消息数
         avg_daily = round(best_msgs / days, 1) if days > 0 else 0
         
-        # 生成来信内容 - 更丰富的版本
-        letter_parts = [f'嘿，{best_name_short}：']
+        # 用户昵称（收信人）- 清理特殊符号
+        recipient = clean_nickname(my_name) if my_name else '你'
+        recipient_short = recipient[:6] if len(recipient) > 6 else recipient
+        
+        # 生成来信内容 - 从好友视角写给用户
+        letter_parts = [f'亲爱的{recipient_short}：']
         letter_parts.append('')
-        letter_parts.append(f'写这封信的时候，我翻看了我们2025年所有的聊天记录。')
+        letter_parts.append(f'翻看我们2025年的聊天记录，心里涌起很多感慨。')
         letter_parts.append('')
-        letter_parts.append(f'这一年，我们一共聊了 <strong>{best_msgs:,}</strong> 条消息。')
+        letter_parts.append(f'这一年，我们聊了 <strong>{best_msgs:,}</strong> 条消息。')
         
         if days > 30:
-            letter_parts.append(f'在 <strong>{days}</strong> 天的时光里，平均每天 <strong>{avg_daily}</strong> 条。')
+            letter_parts.append(f'在 <strong>{days}</strong> 天里，平均每天 <strong>{avg_daily}</strong> 条，你是我聊得最多的人。')
         
         if sessions > 10:
-            letter_parts.append(f'我们开启了 <strong>{sessions}</strong> 次对话，每一次打开聊天框看到你的消息都很开心。')
+            letter_parts.append(f'我们有过 <strong>{sessions}</strong> 次对话，每次点开和你的聊天框都觉得安心。')
         
-        # 消息来往平衡
+        # 消息来往平衡（注意视角：their_msgs是好友发的，my_msgs是用户发的）
         if their_msgs > 0 and my_msgs > 0:
             if abs(their_msgs - my_msgs) / max(their_msgs, my_msgs) < 0.3:
-                letter_parts.append(f'你发了 {their_msgs} 条，我发了 {my_msgs} 条，我们的来往很均衡呢。')
-            elif my_msgs > their_msgs:
-                letter_parts.append(f'好像我话比较多，发了 {my_msgs} 条，谢谢你一直倾听。')
+                letter_parts.append(f'我发了 {their_msgs} 条，你发了 {my_msgs} 条，我们的来往很默契。')
+            elif their_msgs > my_msgs:
+                letter_parts.append(f'我发了 {their_msgs} 条，谢谢你一直愿意听我唠叨。')
             else:
-                letter_parts.append(f'你发了 {their_msgs} 条，我很珍惜你愿意和我分享这么多。')
+                letter_parts.append(f'你发了 {my_msgs} 条，我很开心你愿意和我分享那么多。')
         
         if late_night > 20:
-            letter_parts.append(f'有 <strong>{late_night}</strong> 条消息是在深夜发出的，谢谢你陪我熬过那些睡不着的夜晚。')
+            letter_parts.append(f'有 <strong>{late_night}</strong> 条深夜消息，谢谢你陪我度过那些睡不着的夜晚。')
         
         if reply_desc:
-            letter_parts.append(reply_desc + '，因为不想让你等太久。')
+            letter_parts.append(reply_desc + '，这让我觉得被重视。')
         
         if peak_month_name:
-            letter_parts.append(f'<strong>{peak_month_name}</strong>是我们聊得最多的时候，那段时光真的很美好。')
+            letter_parts.append(f'<strong>{peak_month_name}</strong>是我们聊得最多的时候，那段日子我很开心。')
         
-        # 关心互动
+        # 关心互动（视角反转）
         if care_them > 5 or care_me > 5:
-            letter_parts.append(f'这一年，你关心了我 {care_them} 次，我关心了你 {care_me} 次。')
-            letter_parts.append('每一句"最近怎么样"、"注意身体"都被我记在心里。')
+            letter_parts.append(f'这一年，我关心了你 {care_them} 次，你关心了我 {care_me} 次。')
+            letter_parts.append('每一句问候，我都记得。')
         
         letter_parts.append('')
-        letter_parts.append('回顾这些数字，它们不只是冷冰冰的统计，')
-        letter_parts.append('而是我们这一年友谊的见证。')
+        letter_parts.append('这些数字背后，是我们这一年的陪伴。')
+        letter_parts.append('能遇见你，真的很幸运。')
         letter_parts.append('')
-        letter_parts.append('新的一年，希望我们继续保持联系。')
-        letter_parts.append('愿你一切都好。')
+        letter_parts.append('新的一年，继续一起走吧。')
         letter_parts.append('')
-        letter_parts.append('—— 你的好友')
+        # 署名是好友的名字
+        letter_parts.append(f'—— {best_name_short}')
         
         # 使用信封拆开动画结构
         html = f'''
         <div class="letter-wrapper">
-            <div class="envelope" onclick="this.classList.toggle('opened')">
+            <div class="envelope" onclick="openEnvelope(this)">
                 <div class="envelope-back"></div>
                 <div class="envelope-flap"></div>
                 <div class="envelope-seal">💌</div>
@@ -2609,7 +2634,7 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 <div class="letter-paper">
                     <div class="letter-header">
                         <span class="letter-icon">✉️</span>
-                        <span class="letter-title">写给 {best_name_short} 的一封信</span>
+                        <span class="letter-title">来自 {best_name_short} 的一封信</span>
                     </div>
                     <div class="letter-content">
                         {'<br>'.join(letter_parts)}
@@ -3719,7 +3744,7 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
     # ============ 节日聊天分析 ============
     def make_festival_analysis():
         """分析特殊节日的聊天情况"""
-        # 2025年重要节日
+        # 2025年重要节日（包含开学日，让数据自己说话）
         festivals = {
             '2025-01-01': ('🎊', '元旦', '新年第一天'),
             '2025-01-29': ('🧧', '除夕', '年三十'),
@@ -3731,6 +3756,7 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
             '2025-05-01': ('💪', '劳动节', '五一假期'),
             '2025-05-31': ('🐲', '端午节', '粽子节'),
             '2025-06-01': ('🧸', '儿童节', '保持童心'),
+            '2025-09-01': ('📖', '开学日', '新学期开始'),
             '2025-09-10': ('📚', '教师节', '感恩师恩'),
             '2025-10-01': ('🇨🇳', '国庆节', '祖国生日'),
             '2025-10-06': ('🌕', '中秋节', '团圆时刻'),
@@ -3773,18 +3799,19 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         festival_stats.sort(key=lambda x: -x['msgs'])
         max_msgs = festival_stats[0]['msgs'] if festival_stats else 1
         
-        # 生成节日卡片
+        # 生成节日卡片 - 第一名突出显示
         cards_html = ''
         for i, f in enumerate(festival_stats[:8]):
             pct = int(f['msgs'] / max_msgs * 100)
             is_top = i == 0
             top_class = 'festival-top' if is_top else ''
+            crown = '👑 ' if is_top else ''
             
             cards_html += f'''
             <div class="festival-card {top_class}">
                 <div class="festival-icon">{f['icon']}</div>
                 <div class="festival-info">
-                    <div class="festival-name">{f['name']}</div>
+                    <div class="festival-name">{crown}{f['name']}</div>
                     <div class="festival-date">{f['date']}</div>
                 </div>
                 <div class="festival-msgs">{f['msgs']:,}条</div>
@@ -3792,22 +3819,11 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 <div class="festival-friend">聊最多: {display_name(f['top_friend'][:6])}</div>
             </div>'''
         
-        # 最热闹的节日
+        # 最热闹的节日（用于底部文案）
         hottest = festival_stats[0] if festival_stats else None
         
         html = f'''
         <div class="festival-analysis">
-            <div class="festival-header">
-                <div class="festival-hero">
-                    <span class="festival-hero-icon">{hottest['icon'] if hottest else '🎉'}</span>
-                    <div class="festival-hero-info">
-                        <div class="festival-hero-name">{hottest['name'] if hottest else '-'}</div>
-                        <div class="festival-hero-desc">你最热闹的节日</div>
-                        <div class="festival-hero-msgs">{hottest['msgs']:,}条消息</div>
-                    </div>
-                </div>
-            </div>
-            
             <div class="festival-grid">
                 {cards_html}
             </div>
@@ -4598,7 +4614,7 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
     
     # ============ 表情气质分析 ============
     def make_emoji_analysis():
-        """分析用户的表情使用习惯和气质类型"""
+        """分析用户的表情使用习惯和气质类型 - 多维度优化版"""
         # 统计所有聊天中的表情使用 - 尝试多种字段名
         emoji_counts = defaultdict(int)
         total_emoji_msgs = 0
@@ -4660,38 +4676,110 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 </div>
             </div>'''
         
-        # 获取Top10表情
-        top_emojis = sorted(emoji_counts.items(), key=lambda x: -x[1])[:10]
+        # ========== 多维度表情分析 ==========
         
-        # 表情气质分析
-        # 分类表情
-        warm_emojis = ['❤️', '💕', '💗', '💖', '🥰', '😘', '💝', '💞', '🤗', '😊', '☺️', '💓']
-        funny_emojis = ['😂', '🤣', '😆', '😹', '🤭', '😝', '😜', '🤪', '👻', '🙈']
-        cool_emojis = ['😎', '🤙', '👍', '💪', '🔥', '⚡', '🎯', '✨', '🌟', '💫']
-        sad_emojis = ['😭', '😢', '🥺', '😿', '💔', '😞', '😔', '🥲', '😥']
-        think_emojis = ['🤔', '🧐', '💭', '❓', '❔', '🤷', '😏', '🙄']
+        # 获取Top15表情
+        top_emojis = sorted(emoji_counts.items(), key=lambda x: -x[1])[:15]
         
-        warm_count = sum(emoji_counts.get(e, 0) for e in warm_emojis)
-        funny_count = sum(emoji_counts.get(e, 0) for e in funny_emojis)
-        cool_count = sum(emoji_counts.get(e, 0) for e in cool_emojis)
-        sad_count = sum(emoji_counts.get(e, 0) for e in sad_emojis)
-        think_count = sum(emoji_counts.get(e, 0) for e in think_emojis)
+        # 1. 微信自带表情 vs 第三方/特殊表情
+        # 微信常用自带表情（基础emoji）
+        wechat_builtin = set('😀😃😄😁😆😅🤣😂🙂🙃😉😊😇🥰😍🤩😘😗☺😚😋😛😜🤪😝🤑🤗🤭🤫🤔🤐🤨😐😑😶😏😒🙄😬🤥😌😔😪🤤😴😷🤒🤕🤢🤮🤧🥵🥶🥴😵🤯🤠🥳🥸😎🤓🧐😕😟🙁☹😮😯😲😳🥺😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾🙈🙉🙊💋💌💘💝💖💗💓💞💕💟❣💔❤🧡💛💚💙💜🤎🖤🤍💯💢💥💫💦💨🕳💣💬👁‍🗨🗨🗯💭💤👋🤚🖐✋🖖👌🤌🤏✌🤞🤟🤘🤙👈👉👆🖕👇☝👍👎✊👊🤛🤜👏🙌👐🤲🤝🙏✍💅🤳💪🦾🦿🦵🦶👂🦻👃🧠🫀🫁🦷🦴👀👁👅👄')
         
-        # 判断主导气质
-        styles = [
-            ('💗 温柔系', warm_count, '你的表情里满是爱意，擅长用小符号传递温暖', 'var(--pink)'),
-            ('😂 幽默系', funny_count, '你是群聊的开心果，总能用表情逗大家笑', 'var(--yellow)'),
-            ('😎 酷炫系', cool_count, '简洁有力，一个表情胜过千言万语', 'var(--cyan)'),
-            ('🥺 感性系', sad_count, '你敏感细腻，表情是情绪最真实的出口', 'var(--purple)'),
-            ('🤔 思考系', think_count, '你爱提问、爱思考，表情里藏着好奇心', 'var(--dim)'),
-        ]
-        styles.sort(key=lambda x: -x[1])
-        dominant_style = styles[0]
+        # 统计非自带表情的使用
+        custom_emoji_count = 0
+        custom_emojis = []
+        builtin_emoji_count = 0
+        
+        for emoji, count in emoji_counts.items():
+            # 检查是否是微信自带的基础emoji
+            is_builtin = False
+            for char in emoji:
+                if char in wechat_builtin:
+                    is_builtin = True
+                    break
+            
+            if is_builtin or len(emoji) == 1:
+                builtin_emoji_count += count
+            else:
+                custom_emoji_count += count
+                custom_emojis.append(emoji)
+        
+        # 计算表情包多样性得分
+        unique_emoji_count = len(emoji_counts)
+        diversity_score = min(100, unique_emoji_count * 3)
+        
+        # 计算第三方表情包占比
+        custom_ratio = custom_emoji_count / total_emoji_msgs if total_emoji_msgs > 0 else 0
+        
+        # 2. 情感深度分析 - 更细致的分类
+        emotion_categories = {
+            '温暖亲密': (['❤️', '💕', '💗', '💖', '🥰', '😘', '💝', '💞', '🤗', '😊', '☺️', '💓', '💋', '🥺', '🤍', '💜'], 0),
+            '开心幽默': (['😂', '🤣', '😆', '😹', '🤭', '😝', '😜', '🤪', '👻', '🙈', '😄', '😁', '🤡', '🎉', '🎊'], 0),
+            '酷炫自信': (['😎', '🤙', '👍', '💪', '🔥', '⚡', '🎯', '✨', '🌟', '💫', '🤘', '👊', '🏆', '💯'], 0),
+            '可爱撒娇': (['🥺', '😿', '🙏', '👉👈', '😣', '🥹', '😖', '💦', '😭', '🫣', '🙊', '🐱', '🐰', '🐻'], 0),
+            '思考调侃': (['🤔', '🧐', '💭', '🤷', '😏', '🙄', '😐', '🫠', '💀', '☠️', '👀', '🤨'], 0),
+        }
+        
+        for emoji, count in emoji_counts.items():
+            for category, (emoji_list, _) in emotion_categories.items():
+                if emoji in emoji_list:
+                    emotion_categories[category] = (emoji_list, emotion_categories[category][1] + count)
+                    break
+        
+        # 找出主导情感
+        emotion_scores = [(cat, data[1]) for cat, data in emotion_categories.items()]
+        emotion_scores.sort(key=lambda x: -x[1])
+        dominant_emotion = emotion_scores[0][0] if emotion_scores[0][1] > 0 else '综合型'
+        
+        # 3. 使用频繁度分析 - 找出招牌表情
+        top1_emoji, top1_count = top_emojis[0] if top_emojis else ('😊', 0)
+        top1_ratio = top1_count / total_emoji_msgs if total_emoji_msgs > 0 else 0
+        
+        # 4. 综合判断表情气质
+        # 气质标签组合
+        personality_tags = []
+        
+        # 多样性标签
+        if unique_emoji_count > 50:
+            personality_tags.append('🎨 表情收藏家')
+        elif unique_emoji_count > 30:
+            personality_tags.append('🌈 表达丰富')
+        
+        # 第三方表情包品味
+        if custom_ratio > 0.3:
+            personality_tags.append('✨ 品味独特')
+        elif custom_ratio > 0.15:
+            personality_tags.append('💎 有格调')
+        
+        # 招牌表情依赖度
+        if top1_ratio > 0.3:
+            personality_tags.append(f'💫 {top1_emoji}狂热粉')
+        
+        # 情感倾向
+        emotion_tag_map = {
+            '温暖亲密': '💗 暖心达人',
+            '开心幽默': '😂 快乐源泉',
+            '酷炫自信': '😎 酷盖本盖',
+            '可爱撒娇': '🥺 可爱担当',
+            '思考调侃': '🤔 灵魂段子手',
+        }
+        if dominant_emotion in emotion_tag_map:
+            personality_tags.append(emotion_tag_map[dominant_emotion])
+        
+        # 确定主气质
+        style_configs = {
+            '温暖亲密': ('💗 温柔治愈系', '你的表情里满是爱意和温暖，每个符号都在传递关心', 'var(--pink)'),
+            '开心幽默': ('😂 欢乐制造机', '你是聊天的开心果，用表情传递快乐是你的超能力', 'var(--yellow)'),
+            '酷炫自信': ('😎 气场全开型', '简洁有力是你的风格，一个表情就能镇住全场', 'var(--cyan)'),
+            '可爱撒娇': ('🥺 软萌可爱派', '你的表情让人想捏脸，撒娇是你的必杀技', 'var(--purple)'),
+            '思考调侃': ('🤔 高级玩梗师', '你的表情自带吐槽属性，懂的人自然懂', 'var(--dim)'),
+        }
+        dominant_style = style_configs.get(dominant_emotion, ('🎭 百变达人', '你的表情库丰富多彩，随心情切换自如', 'var(--pink)'))
         
         # 生成Top10表情HTML
         emoji_list_html = ''
         max_count = top_emojis[0][1] if top_emojis else 1
-        for i, (emoji, count) in enumerate(top_emojis, 1):
+        for i, (emoji, count) in enumerate(top_emojis[:10], 1):
             pct = int(count / max_count * 100)
             medal = ['🥇', '🥈', '🥉'][i-1] if i <= 3 else str(i)
             emoji_list_html += f'''
@@ -4702,30 +4790,29 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 <span class="emoji-count">{count:,}次</span>
             </div>'''
         
-        # 生成气质分布HTML
-        total_style = sum(s[1] for s in styles) or 1
-        style_html = ''
-        for name, count, desc, color in styles:
-            pct = int(count / total_style * 100)
-            if pct > 0:
-                style_html += f'''
-                <div class="style-item">
-                    <div class="style-header">
-                        <span class="style-name">{name}</span>
-                        <span class="style-pct">{pct}%</span>
-                    </div>
-                    <div class="style-bar"><div class="style-fill" style="width:{pct}%;background:{color}"></div></div>
-                </div>'''
+        # 生成个性标签HTML
+        tags_html = ''.join([f'<span class="emoji-tag">{tag}</span>' for tag in personality_tags[:4]])
+        
+        # 生成统计洞察
+        insight_text = f'你共使用了 {unique_emoji_count} 种不同表情，'
+        if custom_ratio > 0.2:
+            insight_text += f'其中{int(custom_ratio*100)}%是第三方表情包，品味很独特！'
+        elif top1_ratio > 0.25:
+            insight_text += f'最爱的 {top1_emoji} 占了{int(top1_ratio*100)}%，这就是你的专属符号！'
+        else:
+            insight_text += '表情运用均衡丰富，是个表达高手！'
         
         html = f'''
         <div class="emoji-analysis">
             <div class="emoji-dominant">
-                <div class="dominant-badge" style="border-color:{dominant_style[3]}">
+                <div class="dominant-badge" style="border-color:{dominant_style[2]}">
                     <div class="dominant-icon">{dominant_style[0].split()[0]}</div>
                     <div class="dominant-name">{dominant_style[0]}</div>
                 </div>
-                <div class="dominant-desc">{dominant_style[2]}</div>
+                <div class="dominant-desc">{dominant_style[1]}</div>
             </div>
+            
+            <div class="emoji-tags">{tags_html}</div>
             
             <div class="emoji-sections">
                 <div class="emoji-top10">
@@ -4733,16 +4820,11 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                     <div class="emoji-list">{emoji_list_html}</div>
                     <div class="emoji-total">共使用 {total_emoji_msgs:,} 次表情</div>
                 </div>
-                
-                <div class="emoji-styles">
-                    <div class="emoji-section-title">🎨 表情气质分布</div>
-                    <div class="style-list">{style_html}</div>
-                </div>
             </div>
             
             <div class="emoji-insight">
                 <span class="insight-icon">💡</span>
-                <span class="insight-text">表情是文字之外的"第二语言"，你最爱用的那个表情，也许正是你最真实的表达方式。</span>
+                <span class="insight-text">{insight_text}</span>
             </div>
         </div>'''
         
@@ -4965,18 +5047,6 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
             radar_points.append(f'{x},{y}')
         radar_path = ' '.join(radar_points)
         
-        # 生成动机条形图HTML
-        bars_html = ''
-        for name, score, desc, color in motivations:
-            bars_html += f'''
-            <div class="motive-item">
-                <div class="motive-header">
-                    <span class="motive-name">{name}</span>
-                    <span class="motive-score">{score}分</span>
-                </div>
-                <div class="motive-bar"><div class="motive-fill" style="width:{score}%;background:{color}"></div></div>
-            </div>'''
-        
         html = f'''
         <div class="motivation-analysis">
             <div class="motivation-dominant">
@@ -5007,11 +5077,6 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                     <span class="radar-label" style="bottom:10%;left:10%">信息交换</span>
                     <span class="radar-label" style="top:30%;left:0">娱乐享受</span>
                 </div>
-            </div>
-            
-            <div class="motivation-bars">
-                <div class="bars-title">📊 动机分布</div>
-                {bars_html}
             </div>
             
             <div class="motivation-insight">
@@ -5099,24 +5164,28 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         # 取前10个好友计算默契度，然后选分数最高的5个
         chemistry_list = []
         
-        for chat in sorted_private[:10]:
+        for idx, chat in enumerate(sorted_private[:10]):
             name = chat['name']
             score = 0
             details = []
+            detail_scores = []  # 记录每个特点的分数，用于选择最突出的
             
             # 1. 消息量平衡度 (最高20分)
             their_msgs = chat.get('their_msgs', 0)
             my_msgs = chat.get('my_msgs', 0)
-            if their_msgs + my_msgs > 0:
+            total_msgs = their_msgs + my_msgs
+            if total_msgs > 0:
                 balance = min(their_msgs, my_msgs) / max(their_msgs, my_msgs) if max(their_msgs, my_msgs) > 0 else 0
                 balance_score = int(balance * 20)
                 score += balance_score
-                if balance > 0.9:
-                    details.append('💬 你们的对话有来有往，像心灵在同频共振')
-                elif balance > 0.7:
-                    details.append('💬 互动很平衡，让对话自然又舒服')
-                elif balance > 0.5:
-                    details.append('💬 对话节奏还不错，继续保持')
+                # 只有平衡度很高才记录
+                if balance > 0.85:
+                    detail_scores.append((balance_score, f'💬 消息比例{int(balance*100)}%平衡，你{my_msgs}条Ta{their_msgs}条'))
+                elif balance > 0.6:
+                    if their_msgs > my_msgs:
+                        detail_scores.append((balance_score, f'💬 Ta比你话多，发了{their_msgs}条'))
+                    else:
+                        detail_scores.append((balance_score, f'💬 你比Ta话多，发了{my_msgs}条'))
             
             # 2. 回复速度匹配度 (最高20分)
             reply_them = chat.get('reply_them_median', 0)
@@ -5125,12 +5194,18 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 reply_balance = min(reply_them, reply_me) / max(reply_them, reply_me) if max(reply_them, reply_me) > 0 else 0
                 reply_score = int(reply_balance * 20)
                 score += reply_score
-                if reply_them < 60 and reply_me < 60:
-                    details.append('⚡ 秒回默契！消息从不让对方等')
-                elif reply_them < 120 and reply_me < 120:
-                    details.append('⚡ 回复很快，沟通节奏很匹配')
-                elif reply_them < 180 or reply_me < 180:
-                    details.append('⚡ 总有一方在等待回复')
+                
+                # 根据具体数值生成个性化描述
+                if reply_them < 30 and reply_me < 30:
+                    detail_scores.append((reply_score + 5, f'⚡ 神级秒回！你{int(reply_me)}秒Ta{int(reply_them)}秒'))
+                elif reply_them < 60 and reply_me < 60:
+                    detail_scores.append((reply_score, f'⚡ 双向秒回：你{int(reply_me)}秒 vs Ta{int(reply_them)}秒'))
+                elif reply_them < 60:
+                    detail_scores.append((reply_score, f'⚡ Ta回复超快，平均{int(reply_them)}秒'))
+                elif reply_me < 60:
+                    detail_scores.append((reply_score, f'⚡ 你回复超快，平均{int(reply_me)}秒'))
+                elif reply_them < 180 and reply_me < 180:
+                    detail_scores.append((reply_score, f'⚡ 回复节奏稳定，平均{int((reply_them+reply_me)/2)}秒'))
             
             # 3. 会话频率 (最高20分)
             sessions = chat.get('sessions', 0)
@@ -5138,37 +5213,55 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
             session_freq = sessions / days if days > 0 else 0
             freq_score = min(20, int(session_freq * 10))
             score += freq_score
-            if session_freq > 2:
-                details.append('📅 每天聊好几轮，距离被一点点拉近')
+            
+            if session_freq > 3:
+                detail_scores.append((freq_score + 5, f'📅 日均{round(session_freq,1)}轮对话，聊天狂魔'))
+            elif session_freq > 2:
+                detail_scores.append((freq_score, f'📅 {days}天聊了{sessions}次，每天好几轮'))
             elif session_freq > 1:
-                details.append('📅 天天都要说几句，这是习惯也是牵挂')
-            elif session_freq > 0.5:
-                details.append('📅 保持稳定联系，细水长流的友情')
-            elif session_freq > 0.2:
-                details.append('📅 虽然不常聊，但从未忘记')
+                detail_scores.append((freq_score, f'📅 日均{round(session_freq,1)}次对话，稳定输出'))
+            elif sessions > 50:
+                detail_scores.append((freq_score, f'📅 {sessions}次对话，细水长流'))
             
             # 4. 深夜陪伴 (最高20分)
             late_night = chat.get('late_night', 0)
             late_score = min(20, late_night // 5)
             score += late_score
-            if late_night > 100:
-                details.append('🌙 深夜灵魂伴侣，最真实的话都在夜里说')
+            
+            if late_night > 200:
+                detail_scores.append((late_score + 10, f'🌙 {late_night}条深夜消息，夜猫子联盟'))
+            elif late_night > 100:
+                detail_scores.append((late_score + 5, f'🌙 {late_night}条深夜私语，黑夜中的光'))
             elif late_night > 50:
-                details.append('🌙 夜聊知己，有人陪你度过失眠的夜')
+                detail_scores.append((late_score, f'🌙 {late_night}条夜间消息，凌晨也在'))
             elif late_night > 20:
-                details.append('🌙 偶尔深夜陪伴，是特别的温柔')
+                detail_scores.append((late_score, f'🌙 {late_night}次深夜陪伴'))
             
             # 5. 关心互动 (最高20分)
             care_them = chat.get('care_them', 0)
             care_me = chat.get('care_me', 0)
-            care_score = min(20, (care_them + care_me) // 2)
+            total_care = care_them + care_me
+            care_score = min(20, total_care // 2)
             score += care_score
-            if care_them > 20 and care_me > 20:
-                details.append('❤️ 互相关心满满，是真正的双向在乎')
-            elif care_them > 10 and care_me > 10:
-                details.append('❤️ 彼此都很在乎，每句关心都走心')
-            elif care_them > 5 or care_me > 5:
-                details.append('❤️ 有人在默默关心着你')
+            
+            if total_care > 50:
+                detail_scores.append((care_score + 5, f'❤️ 互相关心{total_care}次，双向奔赴'))
+            elif care_them > 20 and care_me > 20:
+                detail_scores.append((care_score, f'❤️ 你关心Ta{care_them}次，Ta关心你{care_me}次'))
+            elif care_them > care_me * 2 and care_them > 10:
+                detail_scores.append((care_score, f'❤️ 你关心Ta多一些（{care_them}次）'))
+            elif care_me > care_them * 2 and care_me > 10:
+                detail_scores.append((care_score, f'❤️ Ta更关心你（{care_me}次）'))
+            elif total_care > 15:
+                detail_scores.append((care_score, f'❤️ 互相关心{total_care}次'))
+            
+            # 按分数排序，选择最突出的2-3个特点
+            detail_scores.sort(key=lambda x: -x[0])
+            details = [d[1] for d in detail_scores[:3]]
+            
+            # 如果没有突出特点，添加默认描述
+            if not details:
+                details = [f'✨ {total_msgs}条消息，默契正在生长']
             
             # 默契称号 - 基于分数的基础称号（后面会根据名次覆盖）
             if score >= 85:
@@ -5186,7 +5279,7 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 'name': name,
                 'score': min(100, score),
                 'base_level': base_level,
-                'details': details[:3] if details else ['✨ 默契正在悄悄生长，每次对话都是养分']
+                'details': details  # 已经在上面筛选好了最突出的2-3个特点
             })
         
         # 按分数从高到低排序，取前5个
@@ -5232,11 +5325,13 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
             c['title'] = title
             c['title_desc'] = title_desc
         
-        # 生成HTML - #1是分数最高的，排在最上面
+        # 生成HTML - 倒序显示（第5名先出现在上面，第1名最后出现在下面）
         cards_html = ''
         total_cards = len(chemistry_list)
         
-        for i, c in enumerate(chemistry_list):
+        # 倒序遍历（从第5名到第1名）
+        for idx, i in enumerate(range(total_cards - 1, -1, -1)):
+            c = chemistry_list[i]
             rank = i + 1
             details_html = '<br>'.join(c['details'])
             
@@ -5254,9 +5349,37 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 color = 'var(--dim)'
                 glow = ''
             
-            delay = i * 1.5
+            # 动画延迟 - 倒序出现
+            delay = idx * 0.8
             
-            cards_html += f'''
+            # 第一名特殊处理 - 需要点击展开
+            if rank == 1:
+                cards_html += f'''
+            <div class="chemistry-card chemistry-champion {glow}" data-rank="{rank}" style="animation-delay:{delay}s">
+                <div class="champion-teaser" onclick="revealChampion(this)">
+                    <div class="champion-question">🏆</div>
+                    <div class="champion-hint">你的年度默契之王是谁？</div>
+                    <div class="champion-tap">点击揭晓</div>
+                </div>
+                <div class="champion-content">
+                    <div class="chemistry-rank">#{rank}</div>
+                    <div class="chemistry-info">
+                        <div class="chemistry-name">{display_name(c['name'][:8])}</div>
+                        <div class="chemistry-title">{c['title']}</div>
+                        <div class="chemistry-title-desc">{c['title_desc']}</div>
+                        <div class="chemistry-details">{details_html}</div>
+                    </div>
+                    <div class="chemistry-score">
+                        <svg viewBox="0 0 36 36" class="chemistry-ring">
+                            <path class="chemistry-ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                            <path class="chemistry-ring-fill" stroke="{color}" stroke-dasharray="{c['score']}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                        </svg>
+                        <div class="chemistry-score-val">{c['score']}</div>
+                    </div>
+                </div>
+            </div>'''
+            else:
+                cards_html += f'''
             <div class="chemistry-card {glow}" data-rank="{rank}" style="animation-delay:{delay}s">
                 <div class="chemistry-rank">#{rank}</div>
                 <div class="chemistry-info">
@@ -5281,7 +5404,7 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
             <div class="chemistry-intro-text">
                 有的人一条消息就秒回，有的人每天聊好几轮，有的人陪你到深夜。<br>
                 这些评分不仅是数字，更是你与Ta真实互动的温度。<br>
-                <span class="chemistry-intro-hint">默契 ≠ 频率，而是你们心意的共振 ✨</span>
+                <span class="chemistry-intro-hint">从第5名开始揭晓，最后的王者需要你亲自点开 ✨</span>
             </div>
         </div>'''
         
@@ -5318,11 +5441,11 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
     --cyan: #4ECDC4;
     --yellow: #FFD93D;
     --purple: #A855F7;
-    --bg1: #0a0a1a;
-    --bg2: #12121f;
-    --bg3: #1a1a2e;
+    --bg1: #1a0a14;
+    --bg2: #231018;
+    --bg3: #2d1520;
     --txt: #fff;
-    --dim: #888;
+    --dim: #a89898;
     --them: #FF6B9D;
     --me: #4ECDC4;
 }}
@@ -5333,15 +5456,16 @@ body{{
     color:var(--txt);
     line-height:1.5;
     overflow-x:hidden;
-    /* 动态渐变背景 - 类似网易云风格 */
+    /* 网易云风格 - 深红紫渐变背景 */
     background: linear-gradient(135deg, 
-        #0a0a1a 0%,
-        #0d1025 15%,
-        #12122a 30%,
-        #0f1a2e 50%,
-        #0a1628 70%,
-        #0d0d1f 85%,
-        #0a0a1a 100%
+        #1a0a14 0%,
+        #2d1424 15%,
+        #3d1a2e 30%,
+        #2e1528 45%,
+        #1f1025 60%,
+        #1a0d1e 75%,
+        #150a16 90%,
+        #0f0810 100%
     );
     background-attachment: fixed;
     min-height: 100vh;
@@ -5358,9 +5482,9 @@ body{{
 }}
 
 /* 星星背景 */
-.stars{{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0}}
-.star{{position:absolute;background:#fff;border-radius:50%;animation:twinkle ease-in-out infinite}}
-@keyframes twinkle{{0%,100%{{opacity:0.3;transform:scale(1)}}50%{{opacity:1;transform:scale(1.2)}}}}
+.stars{{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1}}
+.star{{position:absolute;background:rgba(255,220,220,0.9);border-radius:50%;animation:twinkle ease-in-out infinite}}
+@keyframes twinkle{{0%,100%{{opacity:0.2;transform:scale(1)}}50%{{opacity:0.8;transform:scale(1.3)}}}}
 
 /* 流动线条背景 - 增强版 */
 .flowing-lines{{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:hidden;opacity:0.25}}
@@ -5404,6 +5528,42 @@ body{{
     75%{{transform:translate(-80px,-30px) scale(1.15);opacity:0.7}}
 }}
 
+/* 水彩线条装饰 */
+.watercolor-strokes{{
+    position:fixed;
+    top:0;left:0;right:0;bottom:0;
+    pointer-events:none;
+    z-index:0;
+    overflow:hidden;
+}}
+.watercolor-strokes::before{{
+    content:'';
+    position:absolute;
+    bottom:-10%;
+    right:-5%;
+    width:60%;
+    height:50%;
+    background:
+        radial-gradient(ellipse at 80% 90%, rgba(255,107,157,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 60% 70%, rgba(78,205,196,0.06) 0%, transparent 40%),
+        radial-gradient(ellipse at 90% 80%, rgba(168,85,247,0.05) 0%, transparent 45%);
+    filter:blur(40px);
+    transform:rotate(-15deg);
+}}
+.watercolor-strokes::after{{
+    content:'';
+    position:absolute;
+    top:10%;
+    left:-10%;
+    width:50%;
+    height:40%;
+    background:
+        radial-gradient(ellipse at 20% 30%, rgba(78,205,196,0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 10% 50%, rgba(255,107,157,0.04) 0%, transparent 40%);
+    filter:blur(50px);
+    transform:rotate(10deg);
+}}
+
 /* 烟花 */
 .firework{{position:fixed;pointer-events:none;z-index:1000}}
 .spark{{position:absolute;border-radius:50%;animation:spark-fly 1s ease-out forwards}}
@@ -5414,11 +5574,67 @@ body{{
 
 /* 动画 */
 @keyframes fadeUp{{from{{opacity:0;transform:translateY(30px)}}to{{opacity:1;transform:translateY(0)}}}}
+@keyframes fadeIn{{from{{opacity:0}}to{{opacity:1}}}}
+@keyframes numComplete{{0%{{transform:scale(1)}}50%{{transform:scale(1.15)}}100%{{transform:scale(1)}}}}
+
+/* 全局交互增强 */
+.btn,.share-btn,.nav a{{transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1)}}
+.btn:hover,.share-btn:hover{{transform:scale(1.05);box-shadow:0 8px 25px rgba(255,107,157,0.3)}}
+.btn:active,.share-btn:active{{transform:scale(0.95)}}
+
+/* 卡片悬停效果增强 */
+.chat-card,.group-card,.ranking-card,.festival-card,.honor-card,.event-card,.number-card{{
+    transition:transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.4s ease, border-color 0.3s ease;
+}}
+.chat-card:hover,.group-card:hover,.ranking-card:hover{{
+    transform:translateY(-5px);
+    box-shadow:0 15px 40px rgba(0,0,0,0.2);
+}}
+.festival-card:hover,.honor-card:hover,.event-card:hover{{
+    transform:translateY(-3px) scale(1.02);
+}}
+.number-card:hover{{
+    transform:translateY(-8px);
+    box-shadow:0 20px 50px rgba(255,107,157,0.15);
+    border-color:rgba(255,107,157,0.4);
+}}
+
+/* 数字悬停效果 */
+.num{{
+    display:inline-block;
+    transition:transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s ease;
+}}
+.num:hover{{
+    transform:scale(1.1);
+    color:var(--cyan);
+}}
+
+/* 头像和图标悬停 */
+.friend-avatar,.rank-icon{{
+    transition:transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}}
+.friend-avatar:hover,.rank-icon:hover{{
+    transform:scale(1.2) rotate(5deg);
+}}
+
+/* 进度条动画增强 */
+.rank-fill,.bar-them,.bar-me,.festival-fill{{
+    transition:width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}}
+
+/* 标签悬停 */
+.friend-tag,.insight-tag,.share-tag{{
+    transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}}
+.friend-tag:hover,.insight-tag:hover,.share-tag:hover{{
+    transform:translateY(-2px) scale(1.05);
+    box-shadow:0 5px 15px rgba(0,0,0,0.2);
+}}
 @keyframes glow{{0%,100%{{filter:drop-shadow(0 0 20px var(--pink))}}50%{{filter:drop-shadow(0 0 40px var(--cyan))}}}}
 @keyframes pulse{{0%,100%{{transform:scale(1)}}50%{{transform:scale(1.05)}}}}
 
 /* 导航 - 改进移动端 */
-.nav{{position:fixed;top:0;left:0;right:0;background:rgba(10,10,26,0.95);backdrop-filter:blur(10px);z-index:100;padding:8px 15px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap}}
+.nav{{position:fixed;top:0;left:0;right:0;background:rgba(26,10,20,0.95);backdrop-filter:blur(10px);z-index:100;padding:8px 15px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap}}
 .nav a{{color:var(--dim);text-decoration:none;padding:6px 12px;border-radius:20px;font-size:12px;transition:all 0.3s;white-space:nowrap}}
 .nav a:hover,.nav a.active{{background:var(--pink);color:#fff}}
 
@@ -5445,8 +5661,7 @@ body{{
 /* 开场动画层 */
 .intro-animation-layer{{position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;pointer-events:none;overflow:hidden}}
 .intro-animation-layer.hidden{{display:none}}
-.intro-text-particle{{position:absolute;font-size:clamp(14px,3vw,22px);color:rgba(255,255,255,0.9);white-space:nowrap;animation:float-up 3s ease-out forwards;text-shadow:0 0 15px rgba(255,107,157,0.7);font-weight:500}}
-@keyframes float-up{{0%{{opacity:0;transform:translateY(50px)}}20%{{opacity:1}}80%{{opacity:1}}100%{{opacity:0;transform:translateY(-100px)}}}}
+/* 粒子动画已删除 */
 .intro-narrative{{position:absolute;top:15%;left:50%;transform:translateX(-50%);text-align:center;color:#fff;z-index:20;width:90%}}
 .intro-narrative-text{{font-size:clamp(22px,5vw,36px);opacity:0;animation:narrative-fade 2s ease-out forwards;text-shadow:0 2px 30px rgba(0,0,0,0.6)}}
 @keyframes narrative-fade{{0%{{opacity:0;transform:translateY(20px)}}50%{{opacity:1;transform:translateY(0)}}100%{{opacity:0;transform:translateY(-10px)}}}}
@@ -5457,7 +5672,7 @@ body{{
 .intro-stat-burst{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;opacity:0}}
 .intro-stat-num{{font-size:clamp(60px,15vw,120px);font-weight:900;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
 .intro-stat-label{{font-size:clamp(18px,4vw,28px);color:var(--dim);margin-top:10px}}
-.hero-content{{position:relative;z-index:5;transition:opacity 0.8s ease-out}}
+.hero-content{{position:relative;z-index:5;transition:transform 1s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.8s ease-out}}
 
 .hero-year{{font-size:clamp(60px,18vw,160px);font-weight:900;background:linear-gradient(135deg,var(--pink),var(--cyan),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:glow 4s ease-in-out infinite,hero-year-in 1.5s ease-out}}
 @keyframes hero-year-in{{0%{{opacity:0;transform:scale(0.5);filter:blur(20px)}}100%{{opacity:1;transform:scale(1);filter:blur(0)}}}}
@@ -5465,16 +5680,18 @@ body{{
 .hero-intro{{font-size:clamp(12px,2.5vw,16px);color:rgba(255,255,255,0.5);margin-bottom:20px;font-style:italic;animation:fadeIn 1s ease-out 0.8s both}}
 .hero-story{{margin:20px auto 25px;max-width:500px}}
 .story-lines{{display:flex;flex-direction:column;gap:12px}}
-.story-line{{font-size:clamp(13px,2.8vw,15px);color:rgba(255,255,255,0.7);line-height:1.8;padding:10px 20px;background:rgba(255,255,255,0.03);border-radius:8px;border-left:2px solid var(--pink);animation:story-line-in 0.8s ease-out both}}
-.story-line:nth-child(1){{animation-delay:1s}}.story-line:nth-child(2){{animation-delay:1.3s}}.story-line:nth-child(3){{animation-delay:1.6s}}
-@keyframes story-line-in{{0%{{opacity:0;transform:translateX(-30px)}}100%{{opacity:1;transform:translateX(0)}}}}
+.story-line{{font-size:clamp(13px,2.8vw,15px);color:rgba(255,255,255,0.7);line-height:1.8;padding:10px 20px;background:rgba(255,255,255,0.03);border-radius:8px;border-left:2px solid var(--pink);animation:story-line-in 1s cubic-bezier(0.4, 0, 0.2, 1) both;transition:transform 0.3s ease, background 0.3s ease}}
+.story-line:nth-child(1){{animation-delay:1s}}.story-line:nth-child(2){{animation-delay:1.4s}}.story-line:nth-child(3){{animation-delay:1.8s}}
+.story-line:hover{{transform:translateX(5px);background:rgba(255,255,255,0.06)}}
+@keyframes story-line-in{{0%{{opacity:0;transform:translateX(-50px);border-left-color:transparent}}50%{{border-left-color:var(--pink)}}100%{{opacity:1;transform:translateX(0)}}}}
 .story-line strong{{color:var(--cyan);font-weight:600}}
 .hero-quote{{font-size:clamp(11px,2vw,13px);color:var(--dim);font-style:italic;margin:20px 0;opacity:0.7;animation:fadeIn 1s ease-out 2s both}}
 .hero-stats{{display:flex;gap:clamp(15px,4vw,50px);flex-wrap:wrap;justify-content:center}}
-.hero-stat{{text-align:center;animation:stat-pop 0.6s ease-out forwards;opacity:0;transform:scale(0.5)}}
+.hero-stat{{text-align:center;animation:stat-pop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;opacity:0;transform:scale(0.3) translateY(20px)}}
 .hero-stat:nth-child(1){{animation-delay:2.2s}}.hero-stat:nth-child(2){{animation-delay:2.4s}}.hero-stat:nth-child(3){{animation-delay:2.6s}}.hero-stat:nth-child(4){{animation-delay:2.8s}}.hero-stat:nth-child(5){{animation-delay:3s}}
-@keyframes stat-pop{{0%{{opacity:0;transform:scale(0.5)}}70%{{transform:scale(1.1)}}100%{{opacity:1;transform:scale(1)}}}}
-.hero-stat-val{{font-size:clamp(28px,7vw,52px);font-weight:800;background:linear-gradient(135deg,var(--cyan),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+@keyframes stat-pop{{0%{{opacity:0;transform:scale(0.3) translateY(20px)}}60%{{opacity:1;transform:scale(1.15) translateY(-5px)}}80%{{transform:scale(0.95) translateY(0)}}100%{{opacity:1;transform:scale(1) translateY(0)}}}}
+.hero-stat-val{{font-size:clamp(28px,7vw,52px);font-weight:800;background:linear-gradient(135deg,var(--cyan),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;transition:transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)}}
+.hero-stat:hover .hero-stat-val{{transform:scale(1.1)}}
 .hero-stat-lbl{{font-size:12px;color:var(--dim);margin-top:5px}}
 .scroll-hint{{position:absolute;bottom:30px;color:var(--dim);font-size:13px;animation:bounce 2s infinite 4s}}
 
@@ -5484,7 +5701,7 @@ body{{
 @keyframes blink{{0%,50%{{opacity:1}}51%,100%{{opacity:0}}}}
 
 /* 12月热力图 - 改进布局 */
-.heatmap-section{{padding:40px 0}}
+.heatmap-section{{padding:25px 0}}
 .heatmap-title{{font-size:18px;font-weight:600;text-align:center;margin-bottom:25px;color:var(--txt)}}
 .heatmap-grid{{
     display:grid;
@@ -5494,8 +5711,21 @@ body{{
     margin:0 auto;
     padding:0 20px;
 }}
-.heatmap-month{{text-align:center;cursor:pointer;transition:transform 0.3s}}
-.heatmap-month:hover{{transform:scale(1.05)}}
+.heatmap-month{{text-align:center;cursor:pointer;transition:transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);opacity:0;animation:heatmap-appear 0.7s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards}}
+.heatmap-month:nth-child(1){{animation-delay:0.1s}}
+.heatmap-month:nth-child(2){{animation-delay:0.15s}}
+.heatmap-month:nth-child(3){{animation-delay:0.2s}}
+.heatmap-month:nth-child(4){{animation-delay:0.25s}}
+.heatmap-month:nth-child(5){{animation-delay:0.3s}}
+.heatmap-month:nth-child(6){{animation-delay:0.35s}}
+.heatmap-month:nth-child(7){{animation-delay:0.4s}}
+.heatmap-month:nth-child(8){{animation-delay:0.45s}}
+.heatmap-month:nth-child(9){{animation-delay:0.5s}}
+.heatmap-month:nth-child(10){{animation-delay:0.55s}}
+.heatmap-month:nth-child(11){{animation-delay:0.6s}}
+.heatmap-month:nth-child(12){{animation-delay:0.65s}}
+@keyframes heatmap-appear{{0%{{opacity:0;transform:translateY(30px) scale(0.7)}}70%{{transform:translateY(-5px) scale(1.05)}}100%{{opacity:1;transform:translateY(0) scale(1)}}}}
+.heatmap-month:hover{{transform:scale(1.1) translateY(-5px)}}
 .heatmap-bar{{
     height:100px;
     border-radius:12px;
@@ -5505,13 +5735,14 @@ body{{
     align-items:flex-end;
     justify-content:center;
     padding-bottom:10px;
-    transition:all 0.3s;
+    transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow:0 4px 15px rgba(0,0,0,0.2);
-}}
+;animation:bar-rise 1s cubic-bezier(0.4, 0, 0.2, 1) forwards}}
+@keyframes bar-rise{{0%{{transform:scaleY(0);transform-origin:bottom}}80%{{transform:scaleY(1.05);transform-origin:bottom}}100%{{transform:scaleY(1);transform-origin:bottom}}}}
 .heatmap-bar span{{font-size:13px;color:rgba(255,255,255,0.9);font-weight:700}}
 .heatmap-label{{font-size:13px;color:var(--dim);font-weight:500}}
-.heatmap-tooltip{{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--bg3);padding:10px 14px;border-radius:10px;font-size:12px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 0.3s;z-index:10;border:1px solid rgba(255,107,157,0.3)}}
-.heatmap-month:hover .heatmap-tooltip{{opacity:1}}
+.heatmap-tooltip{{position:absolute;bottom:100%;left:50%;transform:translateX(-50%) scale(0.9);background:var(--bg3);padding:10px 14px;border-radius:10px;font-size:12px;white-space:nowrap;opacity:0;pointer-events:none;transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);z-index:10;border:1px solid rgba(255,107,157,0.3)}}
+.heatmap-month:hover .heatmap-tooltip{{opacity:1;transform:translateX(-50%) scale(1)}}
 
 /* 分享卡片 */
 .share-card{{max-width:400px;margin:40px auto;background:linear-gradient(135deg,var(--bg2),var(--bg3));border-radius:20px;padding:30px;text-align:center;border:1px solid rgba(255,107,157,0.3);position:relative;overflow:hidden}}
@@ -5540,18 +5771,27 @@ body{{
 .confetti{{position:fixed;width:10px;height:10px;background:var(--pink);top:-10px;z-index:9999;animation:confetti-fall 3s linear forwards}}
 @keyframes confetti-fall{{0%{{transform:translateY(0) rotate(0deg);opacity:1}}100%{{transform:translateY(100vh) rotate(720deg);opacity:0}}}}
 
-/* 年度来信 - 信封拆开动画 */
-.letter-wrapper{{max-width:500px;margin:40px auto;perspective:1000px}}
+/* 年度来信 - 信封拆开动画（优化流畅度） */
+.letter-wrapper{{max-width:500px;margin:40px auto;perspective:1200px}}
 .envelope{{
     position:relative;
     width:100%;
     min-height:280px;
     cursor:pointer;
     transform-style:preserve-3d;
-    transition:min-height 0.5s ease;
+    transform:scale(1);
+    transition:transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}}
+.envelope:hover:not(.opened){{
+    transform:scale(1.02);
+}}
+.envelope:active:not(.opened){{
+    transform:scale(0.98);
 }}
 .envelope.opened{{
-    min-height:auto;
+    cursor:default;
+    transform:scale(1.03);
+    transition:transform 1s cubic-bezier(0.4, 0, 0.2, 1);
 }}
 .envelope-back{{
     position:absolute;
@@ -5560,9 +5800,15 @@ body{{
     border-radius:16px;
     border:2px solid rgba(255,107,157,0.3);
     box-shadow:0 10px 40px rgba(0,0,0,0.3);
+    transition:all 1.2s cubic-bezier(0.4, 0, 0.2, 1) 1.8s, box-shadow 0.5s ease;
+}}
+.envelope:hover:not(.opened) .envelope-back{{
+    box-shadow:0 15px 50px rgba(255,107,157,0.2);
 }}
 .envelope.opened .envelope-back{{
     position:relative;
+    border-color:rgba(78,205,196,0.3);
+    box-shadow:0 20px 60px rgba(78,205,196,0.15);
 }}
 .envelope-flap{{
     position:absolute;
@@ -5571,9 +5817,12 @@ body{{
     background:linear-gradient(180deg,var(--pink),var(--purple));
     clip-path:polygon(0 0, 50% 100%, 100% 0);
     transform-origin:top center;
-    transition:transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:transform 2.5s cubic-bezier(0.68, -0.3, 0.32, 1.3), filter 0.3s ease;
     z-index:10;
     border-radius:16px 16px 0 0;
+}}
+.envelope:hover:not(.opened) .envelope-flap{{
+    filter:brightness(1.1);
 }}
 .envelope.opened .envelope-flap{{
     transform:rotateX(-180deg);
@@ -5582,7 +5831,7 @@ body{{
     position:absolute;
     top:100px;
     left:50%;
-    transform:translateX(-50%);
+    transform:translateX(-50%) scale(1);
     width:50px;
     height:50px;
     background:linear-gradient(135deg,var(--pink),var(--purple));
@@ -5593,11 +5842,20 @@ body{{
     font-size:24px;
     z-index:15;
     box-shadow:0 4px 15px rgba(255,107,157,0.4);
-    transition:all 0.5s ease;
+    transition:all 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+    animation:seal-pulse 2s ease-in-out infinite;
+}}
+@keyframes seal-pulse{{
+    0%,100%{{box-shadow:0 4px 15px rgba(255,107,157,0.4)}}
+    50%{{box-shadow:0 4px 25px rgba(255,107,157,0.6)}}
+}}
+.envelope:hover:not(.opened) .envelope-seal{{
+    transform:translateX(-50%) scale(1.1);
 }}
 .envelope.opened .envelope-seal{{
     opacity:0;
-    transform:translateX(-50%) scale(0);
+    transform:translateX(-50%) scale(0) rotate(180deg);
+    animation:none;
 }}
 .envelope-hint{{
     position:absolute;
@@ -5606,26 +5864,33 @@ body{{
     transform:translateX(-50%);
     color:var(--dim);
     font-size:12px;
-    animation:pulse 2s infinite;
-    transition:opacity 0.3s;
+    animation:hint-bounce 2s ease-in-out infinite;
+    transition:opacity 0.4s ease;
+}}
+@keyframes hint-bounce{{
+    0%,100%{{transform:translateX(-50%) translateY(0);opacity:0.7}}
+    50%{{transform:translateX(-50%) translateY(-5px);opacity:1}}
 }}
 .envelope.opened .envelope-hint{{opacity:0;pointer-events:none}}
 
-/* 信纸 */
+/* 信纸 - 平滑展开 */
 .letter-paper{{
     position:relative;
     background:linear-gradient(135deg,#1a1a24,#252532);
     border-radius:12px;
-    padding:20px;
+    padding:0;
     margin:20px;
     opacity:0;
+    transform:translateY(-30px) scale(0.95);
     max-height:0;
     overflow:hidden;
-    transition:all 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.3s;
+    transition:opacity 1.2s ease 2s, transform 1.2s cubic-bezier(0.4, 0, 0.2, 1) 2s, max-height 2s cubic-bezier(0.4, 0, 0.2, 1) 1.8s, padding 1s ease 1.8s;
 }}
 .envelope.opened .letter-paper{{
     opacity:1;
-    max-height:2000px;
+    transform:translateY(0) scale(1);
+    max-height:800px;
+    padding:20px;
 }}
 .letter-header{{
     background:linear-gradient(135deg,var(--pink),var(--purple));
@@ -5662,15 +5927,18 @@ body{{
 .personality-desc{{font-size:14px;color:var(--dim);line-height:1.6}}
 .personality-traits{{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-bottom:25px}}
 .trait-tag{{padding:6px 14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:20px;font-size:12px;color:var(--cyan)}}
-.personality-bars{{text-align:left}}
-.bar-item{{display:flex;align-items:center;gap:10px;margin-bottom:12px}}
-.bar-label{{width:70px;font-size:12px;color:var(--dim)}}
-.bar-track{{flex:1;height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden}}
-.bar-fill{{height:100%;background:linear-gradient(90deg,var(--pink),var(--purple));border-radius:4px;transition:width 1s ease-out}}
+.personality-bars{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px 20px;text-align:left}}
+.bar-item{{display:flex;align-items:center;gap:8px}}
+.bar-label{{width:60px;font-size:11px;color:var(--dim);flex-shrink:0}}
+.bar-track{{flex:1;height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;min-width:60px}}
+.bar-fill{{height:100%;background:linear-gradient(90deg,var(--pink),var(--purple));border-radius:4px;width:0;animation:bar-grow 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards}}
+@keyframes bar-grow{{0%{{width:0}}100%{{width:var(--target-width, 50%)}}}}
 .bar-fill.night{{background:linear-gradient(90deg,#6366F1,#A855F7)}}
 .bar-fill.social{{background:linear-gradient(90deg,var(--cyan),#60A5FA)}}
 .bar-fill.depth{{background:linear-gradient(90deg,#F59E0B,#EF4444)}}
-.bar-value{{width:40px;font-size:12px;color:var(--txt);text-align:right}}
+.bar-fill.reply{{background:linear-gradient(90deg,#10B981,#34D399)}}
+.bar-fill.care{{background:linear-gradient(90deg,#EC4899,#F472B6)}}
+.bar-value{{width:35px;font-size:11px;color:var(--txt);text-align:right;flex-shrink:0}}
 
 /* 年度特殊时刻 */
 .moments-container{{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:15px}}
@@ -5696,7 +5964,7 @@ body{{
 
 /* 24小时聊天节奏图谱 */
 .rhythm-container{{max-width:700px;margin:0 auto;padding:20px}}
-.rhythm-header{{text-align:center;margin-bottom:30px}}
+.rhythm-header{{text-align:center;margin-bottom:20px}}
 .rhythm-title{{font-size:20px;font-weight:600;color:var(--txt);margin-bottom:8px}}
 .rhythm-subtitle{{font-size:13px;color:var(--dim)}}
 .rhythm-main{{display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap;justify-content:center}}
@@ -5705,11 +5973,11 @@ body{{
 .rhythm-hour{{position:absolute;width:24px;height:24px;left:50%;top:50%;transform-origin:0 0;transform:rotate(var(--angle)) translateX(75px) rotate(calc(-1 * var(--angle)));background:var(--color);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--bg);font-weight:600;transition:transform 0.3s,box-shadow 0.3s;cursor:pointer}}
 .rhythm-hour:hover{{transform:rotate(var(--angle)) translateX(75px) rotate(calc(-1 * var(--angle))) scale(1.3);box-shadow:0 0 15px var(--color);z-index:10}}
 .rhythm-hour-label{{opacity:0.9}}
-.rhythm-ring-center{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:28px}}
-.rhythm-peak{{position:absolute;bottom:-40px;left:50%;transform:translateX(-50%);text-align:center}}
-.rhythm-peak-label{{font-size:11px;color:var(--dim)}}
-.rhythm-peak-value{{font-size:24px;font-weight:700;color:var(--pink)}}
-.rhythm-peak-range{{font-size:11px;color:var(--dim);margin-top:4px}}
+.rhythm-ring-center{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:90px;height:90px;background:var(--bg);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(0,0,0,0.3)}}
+.rhythm-peak{{text-align:center}}
+.rhythm-peak-label{{font-size:10px;color:var(--dim);margin-bottom:2px}}
+.rhythm-peak-value{{font-size:20px;font-weight:700;color:var(--pink);line-height:1.2}}
+.rhythm-peak-range{{font-size:9px;color:var(--dim);margin-top:2px}}
 .rhythm-periods{{flex:1;min-width:280px;display:flex;flex-direction:column;gap:15px}}
 .rhythm-period{{background:var(--bg2);border-radius:12px;padding:12px 15px}}
 .rhythm-period-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}}
@@ -5727,9 +5995,18 @@ body{{
 .rhythm-summary-label{{font-size:11px;color:var(--dim);display:block;margin-bottom:4px}}
 .rhythm-summary-value{{font-size:14px;font-weight:600;color:var(--cyan)}}
 
+/* 年度旅程时间线 - 动画增强 */
+.journey-item{{opacity:0;transform:translateY(20px);animation:journey-enter 0.6s ease-out forwards}}
+.journey-item:nth-child(1){{animation-delay:0.1s}}
+.journey-item:nth-child(2){{animation-delay:0.2s}}
+.journey-item:nth-child(3){{animation-delay:0.3s}}
+.journey-item:nth-child(4){{animation-delay:0.4s}}
+.journey-item:nth-child(5){{animation-delay:0.5s}}
+.journey-item:nth-child(6){{animation-delay:0.6s}}
+@keyframes journey-enter{{0%{{opacity:0;transform:translateY(20px)}}100%{{opacity:1;transform:translateY(0)}}}}
 /* 年度旅程时间线 */
 .year-journey{{max-width:600px;margin:0 auto}}
-.journey-header{{text-align:center;margin-bottom:30px}}
+.journey-header{{text-align:center;margin-bottom:20px}}
 .journey-title{{font-size:20px;font-weight:700;color:var(--txt);margin-bottom:8px}}
 .journey-subtitle{{font-size:13px;color:var(--dim)}}
 .journey-timeline{{position:relative;padding-left:30px}}
@@ -5824,16 +6101,18 @@ body{{
     padding:20px;
     border:1px solid var(--bg3);
     opacity:0;
-    transform:translateX(-30px);
-    animation:chemistry-reveal 0.8s ease-out forwards;
+    transform:translateX(-50px) scale(0.95);
+    animation:chemistry-reveal 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
     animation-play-state:paused;
-    transition:box-shadow 0.3s,transform 0.3s;
+    transition:box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s ease;
 }}
-.chemistry-card:hover{{transform:translateX(5px)}}
+.chemistry-card:hover{{transform:translateX(8px) scale(1.02);box-shadow:0 10px 30px rgba(0,0,0,0.2)}}
 .chemistry-card.glow-high{{box-shadow:0 0 20px rgba(255,107,157,0.3);border-color:rgba(255,107,157,0.3)}}
 .chemistry-card.glow-mid{{box-shadow:0 0 15px rgba(168,85,247,0.2);border-color:rgba(168,85,247,0.2)}}
 @keyframes chemistry-reveal{{
-    to{{opacity:1;transform:translateX(0)}}
+    0%{{opacity:0;transform:translateX(-50px) scale(0.95)}}
+    60%{{transform:translateX(5px) scale(1.02)}}
+    100%{{opacity:1;transform:translateX(0) scale(1)}}
 }}
 .chemistry-card.animate{{
     animation-play-state:running;
@@ -5847,12 +6126,36 @@ body{{
 .chemistry-score{{position:relative;width:60px;height:60px}}
 .chemistry-ring{{width:100%;height:100%;transform:rotate(-90deg)}}
 .chemistry-ring-bg{{fill:none;stroke:var(--bg3);stroke-width:3}}
-.chemistry-ring-fill{{fill:none;stroke-width:3;stroke-linecap:round;transition:stroke-dasharray 1.5s ease-out}}
+.chemistry-ring-fill{{fill:none;stroke-width:3;stroke-linecap:round}}
+.chemistry-card.animated .chemistry-ring-fill{{animation:ring-fill-anim 2s cubic-bezier(0.4, 0, 0.2, 1) forwards}}
+@keyframes ring-fill-anim{{0%{{stroke-dasharray:0 100}}}}
 .chemistry-score-val{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:16px;font-weight:700;color:var(--txt)}}
 .chemistry-outro{{max-width:600px;margin:30px auto 0;text-align:center;padding:25px;background:linear-gradient(135deg,rgba(255,107,157,0.05),rgba(78,205,196,0.05));border-radius:16px;border:1px solid rgba(255,255,255,0.05)}}
 .chemistry-outro-title{{font-size:16px;font-weight:600;color:var(--txt);margin-bottom:12px}}
 .chemistry-outro-text{{font-size:13px;color:var(--dim);line-height:1.9}}
 .chemistry-outro-text strong{{color:var(--cyan)}}
+
+/* 第一名特殊样式 - 直接显示 */
+.chemistry-champion{{
+    position:relative;
+    min-height:80px;
+    background:linear-gradient(135deg,rgba(255,215,0,0.1),rgba(255,107,157,0.1));
+    border:2px solid rgba(255,215,0,0.3);
+    box-shadow:0 0 30px rgba(255,215,0,0.2);
+}}
+.chemistry-champion .champion-teaser{{
+    display:none !important;
+}}
+.chemistry-champion .champion-content{{
+    display:flex;
+    align-items:center;
+    gap:15px;
+    padding:15px 18px;
+}}
+@keyframes champion-pulse{{
+    0%,100%{{transform:scale(1);filter:drop-shadow(0 0 10px rgba(255,215,0,0.5))}}
+    50%{{transform:scale(1.1);filter:drop-shadow(0 0 20px rgba(255,215,0,0.8))}}
+}}
 
 /* 滚动淡入增强 */
 .scroll-reveal{{opacity:0;transform:translateY(30px);transition:opacity 0.8s ease-out, transform 0.8s ease-out}}
@@ -5863,11 +6166,34 @@ body{{
 
 /* 容器 */
 .container{{max-width:1400px;margin:0 auto;padding:0 15px}}
-.section{{padding:60px 0;position:relative;z-index:1}}
-#chemistry{{padding-bottom:20px}}
-#friend-trends{{padding-top:20px}}
-.section-title{{font-size:clamp(20px,5vw,32px);font-weight:700;text-align:center;margin-bottom:15px;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
-.section-subtitle{{font-size:clamp(12px,2.5vw,14px);color:var(--dim);text-align:center;margin-bottom:40px;font-style:italic}}
+.section{{padding:40px 0;position:relative;z-index:1}}
+#chemistry{{padding-bottom:15px}}
+#friend-trends{{padding-top:15px}}
+
+/* PC端双列布局 */
+.sections-grid{{
+    display:block;
+}}
+@media(min-width:1200px){{
+    .sections-grid{{
+        display:grid;
+        grid-template-columns:repeat(2,1fr);
+        gap:0;
+        max-width:1600px;
+        margin:0 auto;
+    }}
+    .sections-grid .section{{
+        padding:30px 20px;
+    }}
+    .sections-grid .section .container{{
+        max-width:700px;
+    }}
+}}
+
+.section-title{{font-size:clamp(20px,5vw,32px);font-weight:700;text-align:center;margin-bottom:12px;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;opacity:0;animation:title-reveal 1s cubic-bezier(0.4, 0, 0.2, 1) forwards}}
+@keyframes title-reveal{{0%{{opacity:0;transform:translateY(-30px) scale(0.9);letter-spacing:15px}}60%{{letter-spacing:2px}}100%{{opacity:1;transform:translateY(0) scale(1);letter-spacing:normal}}}}
+.section-subtitle{{font-size:clamp(12px,2.5vw,14px);color:var(--dim);text-align:center;margin-bottom:30px;font-style:italic;opacity:0;animation:subtitle-reveal 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.3s forwards}}
+@keyframes subtitle-reveal{{0%{{opacity:0;transform:translateY(10px)}}100%{{opacity:1;transform:translateY(0)}}}}
 
 /* 排行榜 */
 .rankings-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px}}
@@ -5889,13 +6215,13 @@ body{{
 .expand-btn.expanded{{background:var(--bg3)}}
 
 /* 智能分析文案 */
-.insights{{background:linear-gradient(135deg,rgba(255,107,157,0.1),rgba(78,205,196,0.1));border-radius:16px;padding:25px;margin-bottom:40px;border:1px solid rgba(255,107,157,0.2)}}
-.insights-title{{font-size:18px;font-weight:700;margin-bottom:15px;color:var(--pink)}}
+.insights{{background:linear-gradient(135deg,rgba(255,107,157,0.1),rgba(78,205,196,0.1));border-radius:16px;padding:20px;margin-bottom:25px;border:1px solid rgba(255,107,157,0.2);max-width:800px;margin-left:auto;margin-right:auto}}
+.insights-title{{font-size:18px;font-weight:700;margin-bottom:15px;color:var(--pink);text-align:center}}
 
 /* 文字渐入动画 */
 .text-animate{{opacity:0;transform:translateY(20px);transition:opacity 0.8s ease-out, transform 0.8s ease-out}}
 .text-animate.text-visible{{opacity:1;transform:translateY(0)}}
-.insight-item{{padding:10px 15px;margin:8px 0;background:rgba(255,255,255,0.05);border-radius:10px;font-size:14px;line-height:1.6;border-left:3px solid var(--cyan)}}
+.insight-item{{padding:12px 20px;margin:10px auto;background:rgba(255,255,255,0.05);border-radius:12px;font-size:14px;line-height:1.7;border-left:3px solid var(--cyan);max-width:600px;text-align:center}}
 .insight-item strong{{color:var(--yellow)}}
 
 /* 群聊排行榜（群名一行+进度条一行） */
@@ -5906,7 +6232,7 @@ body{{
 .rank-bar-full{{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}}
 
 /* 好友分组 */
-.friend-groups{{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px;margin-bottom:40px}}
+.friend-groups{{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px;margin-bottom:25px}}
 .friend-group{{background:var(--bg2);border-radius:12px;padding:20px;border-left:4px solid var(--pink)}}
 .friend-group:nth-child(1){{border-color:gold}}.friend-group:nth-child(2){{border-color:var(--yellow)}}.friend-group:nth-child(3){{border-color:var(--cyan)}}.friend-group:nth-child(4){{border-color:var(--dim)}}
 .fg-title{{font-size:15px;font-weight:600}}
@@ -5915,7 +6241,17 @@ body{{
 .fg-list{{font-size:11px;color:var(--dim);line-height:1.8}}
 
 /* 私聊卡片 */
-.chat-card,.group-card{{background:var(--bg2);border-radius:12px;margin-bottom:10px;overflow:hidden;border:1px solid var(--bg3)}}
+.chat-card,.group-card{{background:var(--bg2);border-radius:12px;margin-bottom:10px;overflow:hidden;border:1px solid var(--bg3);transition:all 0.3s ease;opacity:0;transform:translateY(20px);animation:card-enter 0.5s ease-out forwards}}
+.chat-card:nth-child(1){{animation-delay:0s}}
+.chat-card:nth-child(2){{animation-delay:0.1s}}
+.chat-card:nth-child(3){{animation-delay:0.2s}}
+.chat-card:nth-child(4){{animation-delay:0.3s}}
+.chat-card:nth-child(5){{animation-delay:0.4s}}
+.group-card:nth-child(1){{animation-delay:0s}}
+.group-card:nth-child(2){{animation-delay:0.1s}}
+.group-card:nth-child(3){{animation-delay:0.2s}}
+@keyframes card-enter{{0%{{opacity:0;transform:translateY(20px)}}100%{{opacity:1;transform:translateY(0)}}}}
+.chat-card:hover,.group-card:hover{{border-color:rgba(255,107,157,0.3);box-shadow:0 5px 20px rgba(0,0,0,0.2)}}
 .chat-header,.group-header{{padding:15px 20px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:background 0.3s}}
 .chat-header:hover,.group-header:hover{{background:var(--bg3)}}
 .chat-tags{{padding:0 20px 8px;display:flex;flex-wrap:wrap;gap:6px}}
@@ -6049,13 +6385,21 @@ td:first-child,th:first-child{{text-align:left}}
 /* 年度数字亮点 */
 .numbers-section{{min-height:80vh;display:flex;flex-direction:column;justify-content:center}}
 .numbers-showcase{{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:800px;margin:0 auto 30px}}
-.number-card{{background:var(--bg2);border-radius:20px;padding:30px 20px;text-align:center;border:1px solid var(--bg3);transition:all 0.3s;position:relative;overflow:hidden}}
-.number-card::before{{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--pink),var(--cyan));opacity:0;transition:opacity 0.3s}}
-.number-card:hover{{transform:translateY(-5px);box-shadow:0 15px 40px rgba(0,0,0,0.3)}}
-.number-card:hover::before{{opacity:1}}
+.number-card{{background:var(--bg2);border-radius:20px;padding:30px 20px;text-align:center;border:1px solid var(--bg3);transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1);position:relative;overflow:hidden;opacity:0;animation:card-appear 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards}}
+.number-card:nth-child(1){{animation-delay:0.1s}}
+.number-card:nth-child(2){{animation-delay:0.2s}}
+.number-card:nth-child(3){{animation-delay:0.3s}}
+.number-card:nth-child(4){{animation-delay:0.4s}}
+.number-card:nth-child(5){{animation-delay:0.5s}}
+.number-card:nth-child(6){{animation-delay:0.6s}}
+@keyframes card-appear{{0%{{opacity:0;transform:translateY(40px) scale(0.85)}}60%{{transform:translateY(-5px) scale(1.02)}}100%{{opacity:1;transform:translateY(0) scale(1)}}}}
+.number-card::before{{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--pink),var(--cyan));opacity:0;transition:opacity 0.4s ease;transform:scaleX(0);transform-origin:left}}
+.number-card:hover{{transform:translateY(-8px);box-shadow:0 20px 50px rgba(0,0,0,0.25);border-color:rgba(255,107,157,0.3)}}
+.number-card:hover::before{{opacity:1;transform:scaleX(1)}}
 .number-card.big{{grid-column:span 3;background:linear-gradient(135deg,rgba(255,107,157,0.1),rgba(78,205,196,0.1));border:2px solid rgba(255,107,157,0.3)}}
 .number-card.big .number-value{{font-size:72px}}
-.number-value{{font-size:42px;font-weight:800;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;line-height:1}}
+.number-value{{font-size:42px;font-weight:800;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;line-height:1;transition:transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)}}
+.number-card:hover .number-value{{transform:scale(1.1)}}
 .number-label{{font-size:16px;color:var(--txt);font-weight:500;margin-bottom:8px}}
 .number-sub{{font-size:12px;color:var(--dim);font-style:italic}}
 .numbers-insight{{max-width:600px;margin:0 auto;text-align:center;padding:25px;background:var(--bg2);border-radius:16px;border:1px solid var(--bg3)}}
@@ -6072,7 +6416,9 @@ td:first-child,th:first-child{{text-align:left}}
 .social-health{{max-width:500px;margin:0 auto;text-align:center}}
 .health-score-circle{{position:relative;width:180px;height:180px;margin:0 auto 25px}}
 .health-score-ring{{position:absolute;top:0;left:0;width:100%;height:100%}}
-.health-ring-fill{{transition:stroke-dasharray 1.5s ease-out}}
+.health-ring-fill{{stroke-dasharray:0 283;animation:health-ring-anim 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;animation-play-state:paused}}
+.health-summary.animated .health-ring-fill{{animation-play-state:running}}
+@keyframes health-ring-anim{{0%{{stroke-dasharray:0 283}}100%{{stroke-dasharray:var(--score, 200) 283}}}}
 .health-score-inner{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}}
 .health-score-value{{font-size:48px;font-weight:800;color:var(--txt)}}
 .health-score-label{{font-size:12px;color:var(--dim)}}
@@ -6098,10 +6444,12 @@ td:first-child,th:first-child{{text-align:left}}
 .trends-subtitle{{font-size:13px;color:var(--dim)}}
 .trends-chart{{background:var(--bg2);border-radius:16px;padding:20px;margin-bottom:15px}}
 .trends-svg{{width:100%;height:auto;display:block}}
-.trend-line{{opacity:0;animation:trend-draw 1s ease-out forwards}}
-@keyframes trend-draw{{0%{{opacity:0;stroke-dasharray:1000;stroke-dashoffset:1000}}100%{{opacity:1;stroke-dasharray:1000;stroke-dashoffset:0}}}}
-.trend-dot{{opacity:0;animation:dot-pop 0.3s ease-out forwards;animation-delay:1s}}
-@keyframes dot-pop{{0%{{opacity:0;r:0}}100%{{opacity:1;r:4}}}}
+.trends-chart .trend-line{{stroke-dasharray:2000;stroke-dashoffset:2000;opacity:0}}
+.trends-chart.animated .trend-line{{animation:trend-draw 2.5s ease-out forwards;opacity:1}}
+@keyframes trend-draw{{0%{{stroke-dashoffset:2000}}100%{{stroke-dashoffset:0}}}}
+.trends-chart .trend-dot{{opacity:0;transform:scale(0)}}
+.trends-chart.animated .trend-dot{{animation:dot-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards}}
+@keyframes dot-pop{{0%{{opacity:0;transform:scale(0)}}60%{{transform:scale(1.4)}}100%{{opacity:1;transform:scale(1)}}}}
 .trend-dot:hover{{r:6;cursor:pointer}}
 .trends-legend{{display:flex;flex-wrap:wrap;justify-content:center;gap:15px;margin-bottom:15px}}
 .trend-legend-item{{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--txt)}}
@@ -6122,7 +6470,13 @@ td:first-child,th:first-child{{text-align:left}}
 .highlight-text strong{{color:var(--pink)}}
 .speed-ranking{{background:var(--bg2);border-radius:12px;padding:20px;margin-bottom:20px}}
 .speed-ranking-title{{font-size:14px;font-weight:600;color:var(--txt);margin-bottom:15px;text-align:center}}
-.speed-item{{display:flex;align-items:center;gap:10px;margin-bottom:15px;padding-bottom:15px;border-bottom:1px solid var(--bg3)}}
+.speed-item{{display:flex;align-items:center;gap:10px;margin-bottom:15px;padding-bottom:15px;border-bottom:1px solid var(--bg3);opacity:0;transform:translateX(-20px);animation:slide-in-left 0.5s ease-out forwards}}
+.speed-item:nth-child(1){{animation-delay:0.1s}}
+.speed-item:nth-child(2){{animation-delay:0.2s}}
+.speed-item:nth-child(3){{animation-delay:0.3s}}
+.speed-item:nth-child(4){{animation-delay:0.4s}}
+.speed-item:nth-child(5){{animation-delay:0.5s}}
+@keyframes slide-in-left{{0%{{opacity:0;transform:translateX(-20px)}}100%{{opacity:1;transform:translateX(0)}}}}
 .speed-item:last-child{{margin-bottom:0;padding-bottom:0;border-bottom:none}}
 .speed-rank{{font-size:16px;min-width:30px}}
 .speed-name{{font-size:13px;color:var(--txt);min-width:70px}}
@@ -6137,17 +6491,21 @@ td:first-child,th:first-child{{text-align:left}}
 
 /* 节日聊天分析 */
 .festival-analysis{{max-width:600px;margin:0 auto}}
-.festival-header{{text-align:center;margin-bottom:25px}}
-.festival-hero{{display:inline-flex;align-items:center;gap:20px;padding:25px 35px;background:linear-gradient(135deg,rgba(255,107,157,0.15),rgba(78,205,196,0.15));border-radius:20px;border:2px solid rgba(255,107,157,0.3)}}
-.festival-hero-icon{{font-size:48px}}
-.festival-hero-info{{text-align:left}}
-.festival-hero-name{{font-size:20px;font-weight:700;color:var(--txt)}}
-.festival-hero-desc{{font-size:12px;color:var(--dim)}}
-.festival-hero-msgs{{font-size:16px;color:var(--pink);font-weight:600;margin-top:5px}}
 .festival-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px}}
-.festival-card{{background:var(--bg2);border-radius:12px;padding:15px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;transition:transform 0.3s}}
-.festival-card:hover{{transform:translateY(-3px)}}
-.festival-card.festival-top{{background:linear-gradient(135deg,rgba(255,107,157,0.1),rgba(167,139,250,0.1));border:1px solid rgba(255,107,157,0.3)}}
+.festival-card{{background:var(--bg2);border-radius:12px;padding:15px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;transition:all 0.4s cubic-bezier(0.4, 0, 0.2, 1);border:1px solid transparent;opacity:0;animation:festival-enter 0.7s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards}}
+.festival-card:nth-child(1){{animation-delay:0s}}
+.festival-card:nth-child(2){{animation-delay:0.1s}}
+.festival-card:nth-child(3){{animation-delay:0.15s}}
+.festival-card:nth-child(4){{animation-delay:0.2s}}
+.festival-card:nth-child(5){{animation-delay:0.25s}}
+.festival-card:nth-child(6){{animation-delay:0.3s}}
+@keyframes festival-enter{{0%{{opacity:0;transform:scale(0.8) translateY(20px)}}60%{{transform:scale(1.05) translateY(-3px)}}100%{{opacity:1;transform:scale(1) translateY(0)}}}}
+.festival-card:hover{{transform:translateY(-5px) scale(1.02);border-color:rgba(255,107,157,0.3);box-shadow:0 12px 35px rgba(0,0,0,0.2)}}
+.festival-card .festival-icon{{transition:transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)}}
+.festival-card:hover .festival-icon{{transform:scale(1.3) rotate(10deg)}}
+.festival-card.festival-top{{background:linear-gradient(135deg,rgba(255,107,157,0.15),rgba(167,139,250,0.15));border:2px solid rgba(255,107,157,0.4);box-shadow:0 0 20px rgba(255,107,157,0.2)}}
+.festival-card.festival-top .festival-name{{font-size:18px;color:var(--pink)}}
+.festival-card.festival-top .festival-msgs{{font-size:18px;color:var(--pink)}}
 .festival-icon{{font-size:28px}}
 .festival-info{{flex:1}}
 .festival-name{{font-size:14px;font-weight:600;color:var(--txt)}}
@@ -6226,6 +6584,12 @@ td:first-child,th:first-child{{text-align:left}}
 .energy-level{{font-size:24px;font-weight:700;color:var(--txt);margin-bottom:5px}}
 .energy-desc{{font-size:14px;color:var(--dim)}}
 .energy-chart{{background:var(--bg2);border-radius:16px;padding:20px;margin-bottom:20px}}
+.energy-chart path[stroke]{{stroke-dasharray:500;stroke-dashoffset:500;animation:energy-draw 5s ease-out forwards;animation-play-state:paused}}
+.energy-chart.animated path[stroke]{{animation-play-state:running}}
+.energy-chart path[fill]:not([stroke]){{opacity:0;animation:energy-fill 2.5s ease-out 3s forwards;animation-play-state:paused}}
+.energy-chart.animated path[fill]:not([stroke]){{animation-play-state:running}}
+@keyframes energy-draw{{0%{{stroke-dashoffset:500}}100%{{stroke-dashoffset:0}}}}
+@keyframes energy-fill{{0%{{opacity:0}}100%{{opacity:0.3}}}}
 .energy-svg{{width:100%;height:150px}}
 .energy-labels{{display:flex;justify-content:space-between;margin-top:10px;font-size:11px;color:var(--dim)}}
 .energy-stats{{display:flex;justify-content:center;gap:30px;margin-bottom:20px;flex-wrap:wrap}}
@@ -6280,7 +6644,12 @@ td:first-child,th:first-child{{text-align:left}}
 /* 消息类型分布 */
 .message-types{{max-width:500px;margin:0 auto}}
 .types-chart{{position:relative;width:200px;height:200px;margin:0 auto 25px}}
-.pie-chart{{width:100%;height:100%;transform:rotate(-90deg)}}
+.pie-chart{{width:100%;height:100%;transform:rotate(-90deg);animation:pie-spin 1s ease-out;animation-play-state:paused}}
+.types-chart.animated .pie-chart{{animation-play-state:running}}
+@keyframes pie-spin{{0%{{transform:rotate(-90deg) scale(0.8);opacity:0}}100%{{transform:rotate(-90deg) scale(1);opacity:1}}}}
+.pie-chart circle{{animation:pie-segment 1.5s ease-out forwards;animation-play-state:paused}}
+.types-chart.animated .pie-chart circle{{animation-play-state:running}}
+@keyframes pie-segment{{0%{{stroke-dasharray:0 100}}}}
 .types-center{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}}
 .types-center-icon{{font-size:28px;margin-bottom:5px}}
 .types-center-pct{{font-size:20px;font-weight:700;color:var(--txt)}}
@@ -6326,12 +6695,12 @@ td:first-child,th:first-child{{text-align:left}}
 .concentration-desc{{font-size:12px;color:var(--dim);text-align:center}}
 
 /* 小节总结样式 */
-.section-summary{{margin:30px auto 0;padding:20px 25px;background:linear-gradient(135deg,rgba(255,107,157,0.05),rgba(78,205,196,0.05));border-radius:12px;border:1px solid rgba(255,107,157,0.2);max-width:600px;text-align:center}}
+.section-summary{{margin:20px auto 0;padding:15px 20px;background:linear-gradient(135deg,rgba(255,107,157,0.05),rgba(78,205,196,0.05));border-radius:12px;border:1px solid rgba(255,107,157,0.2);max-width:600px;text-align:center}}
 .summary-text{{font-size:13px;color:var(--dim);line-height:1.8;font-style:italic}}
 
 /* 表情分析样式 */
 .emoji-analysis{{max-width:500px;margin:0 auto;text-align:center}}
-.emoji-header{{margin-bottom:30px}}
+.emoji-header{{margin-bottom:20px}}
 .emoji-main-icon{{font-size:60px;margin-bottom:15px;animation:bounce 2s infinite}}
 @keyframes bounce{{0%,100%{{transform:translateY(0)}}50%{{transform:translateY(-10px)}}}}
 .emoji-title{{font-size:22px;font-weight:700;color:var(--txt);margin-bottom:10px}}
@@ -6355,7 +6724,8 @@ td:first-child,th:first-child{{text-align:left}}
 .cloud-subtitle{{font-size:13px;color:var(--dim)}}
 .cloud-visual{{background:var(--bg2);border-radius:16px;padding:20px;margin-bottom:20px;overflow:hidden}}
 .cloud-svg{{width:100%;height:auto;display:block}}
-.cloud-word{{font-weight:600;cursor:default;transition:all 0.3s;animation:cloud-pop 0.5s ease-out backwards}}
+.cloud-word{{font-weight:600;cursor:default;transition:all 0.3s;opacity:0;animation:cloud-pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards}}
+@keyframes cloud-pop{{0%{{opacity:0;transform:scale(0) rotate(-10deg)}}60%{{transform:scale(1.1) rotate(3deg)}}100%{{opacity:1;transform:scale(1) rotate(0deg)}}}}
 .cloud-word:hover{{filter:brightness(1.3);transform:scale(1.1)}}
 @keyframes cloud-pop{{0%{{opacity:0;transform:scale(0)}}100%{{opacity:1;transform:scale(1)}}}}
 .cloud-top3{{background:var(--bg2);border-radius:12px;padding:15px;margin-bottom:15px}}
@@ -6402,20 +6772,39 @@ td:first-child,th:first-child{{text-align:left}}
 
 /* 表情气质分析 */
 .emoji-analysis{{max-width:600px;margin:0 auto}}
-.emoji-dominant{{text-align:center;margin-bottom:30px;padding:25px;background:var(--bg2);border-radius:16px}}
-.dominant-badge{{display:inline-block;padding:20px 30px;border:2px solid;border-radius:20px;margin-bottom:15px}}
+.emoji-dominant{{text-align:center;margin-bottom:20px;padding:20px;background:var(--bg2);border-radius:16px}}
+.dominant-badge{{display:inline-block;padding:20px 30px;border:2px solid;border-radius:20px;margin-bottom:15px;opacity:0;animation:badge-pop 0.6s ease-out forwards;transition:all 0.3s ease}}
+.dominant-badge:hover{{transform:scale(1.05);box-shadow:0 5px 25px rgba(255,107,157,0.3)}}
+@keyframes badge-pop{{0%{{opacity:0;transform:scale(0.5) rotate(-10deg)}}70%{{transform:scale(1.1) rotate(3deg)}}100%{{opacity:1;transform:scale(1) rotate(0deg)}}}}
 .dominant-icon{{font-size:40px;margin-bottom:8px}}
 .dominant-name{{font-size:18px;font-weight:600;color:var(--txt)}}
 .dominant-desc{{font-size:14px;color:var(--dim);line-height:1.6}}
+.emoji-tags{{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-bottom:20px}}
+.emoji-tag{{padding:6px 14px;background:linear-gradient(135deg,rgba(255,107,157,0.15),rgba(167,139,250,0.15));border:1px solid rgba(255,107,157,0.3);border-radius:20px;font-size:12px;color:var(--txt);opacity:0;animation:tag-pop 0.5s ease-out forwards;transition:all 0.3s ease}}
+.emoji-tag:nth-child(1){{animation-delay:0.1s}}
+.emoji-tag:nth-child(2){{animation-delay:0.2s}}
+.emoji-tag:nth-child(3){{animation-delay:0.3s}}
+.emoji-tag:nth-child(4){{animation-delay:0.4s}}
+.emoji-tag:hover{{transform:scale(1.1);background:linear-gradient(135deg,rgba(255,107,157,0.25),rgba(167,139,250,0.25));box-shadow:0 3px 15px rgba(255,107,157,0.3)}}
+@keyframes tag-pop{{0%{{opacity:0;transform:scale(0.5)}}70%{{transform:scale(1.1)}}100%{{opacity:1;transform:scale(1)}}}}
 .emoji-sections{{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin-bottom:20px}}
 .emoji-top10,.emoji-styles{{background:var(--bg2);border-radius:12px;padding:20px}}
 .emoji-section-title{{font-size:14px;font-weight:600;color:var(--txt);margin-bottom:15px}}
 .emoji-list{{display:flex;flex-direction:column;gap:8px}}
-.emoji-item{{display:flex;align-items:center;gap:10px}}
+.emoji-item{{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;transition:all 0.3s ease;cursor:default;opacity:0;animation:emoji-slide 0.4s ease-out forwards}}
+.emoji-item:nth-child(1){{animation-delay:0s}}
+.emoji-item:nth-child(2){{animation-delay:0.08s}}
+.emoji-item:nth-child(3){{animation-delay:0.16s}}
+.emoji-item:nth-child(4){{animation-delay:0.24s}}
+.emoji-item:nth-child(5){{animation-delay:0.32s}}
+@keyframes emoji-slide{{0%{{opacity:0;transform:translateY(10px)}}100%{{opacity:1;transform:translateY(0)}}}}
+.emoji-item:hover{{background:rgba(255,255,255,0.05);transform:translateX(5px)}}
 .emoji-rank{{width:24px;font-size:12px;color:var(--dim)}}
-.emoji-icon{{font-size:20px;width:30px;text-align:center}}
+.emoji-icon{{font-size:20px;width:30px;text-align:center;transition:transform 0.3s ease}}
+.emoji-item:hover .emoji-icon{{transform:scale(1.4)}}
 .emoji-bar{{flex:1;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}}
-.emoji-fill{{height:100%;background:linear-gradient(90deg,var(--pink),var(--purple));border-radius:3px}}
+.emoji-fill{{height:100%;background:linear-gradient(90deg,var(--pink),var(--purple));border-radius:3px;animation:bar-grow 1s ease-out forwards}}
+@keyframes bar-grow{{0%{{width:0}}100%{{width:var(--target-width,100%)}}}}
 .emoji-count{{font-size:11px;color:var(--dim);min-width:50px;text-align:right}}
 .emoji-total{{text-align:center;font-size:12px;color:var(--dim);margin-top:15px;padding-top:10px;border-top:1px solid var(--bg3)}}
 .style-list{{display:flex;flex-direction:column;gap:12px}}
@@ -6428,20 +6817,41 @@ td:first-child,th:first-child{{text-align:left}}
 .emoji-empty{{text-align:center;padding:40px}}
 .emoji-empty-icon{{font-size:48px;margin-bottom:15px}}
 .emoji-empty-text{{font-size:14px;color:var(--dim);line-height:1.8}}
-.emoji-insight{{background:linear-gradient(135deg,rgba(255,107,157,0.1),rgba(78,205,196,0.1));border-radius:12px;padding:15px;display:flex;gap:12px;align-items:flex-start}}
+.emoji-insight{{background:linear-gradient(135deg,rgba(255,107,157,0.1),rgba(78,205,196,0.1));border-radius:12px;padding:15px;display:flex;gap:12px;align-items:flex-start;opacity:0;animation:insight-appear 0.6s ease-out 0.5s forwards}}
+@keyframes insight-appear{{0%{{opacity:0;transform:translateY(15px)}}100%{{opacity:1;transform:translateY(0)}}}}
 
 /* 社交动机分析 */
 .motivation-analysis{{max-width:700px;margin:0 auto}}
 .motivation-dominant{{display:flex;align-items:center;gap:20px;padding:25px;background:var(--bg2);border-radius:16px;margin-bottom:25px;flex-wrap:wrap;justify-content:center}}
-.dominant-circle{{width:80px;height:80px;border-radius:50%;border:3px solid;display:flex;align-items:center;justify-content:center;flex-shrink:0}}
+.dominant-circle{{width:80px;height:80px;border-radius:50%;border:3px solid;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:0;animation:circle-pop 0.8s ease-out forwards;transition:all 0.3s ease}}
+.dominant-circle:hover{{transform:scale(1.1);box-shadow:0 0 30px rgba(255,107,157,0.4)}}
+@keyframes circle-pop{{0%{{opacity:0;transform:scale(0) rotate(-180deg)}}100%{{opacity:1;transform:scale(1) rotate(0deg)}}}}
 .dominant-emoji{{font-size:36px}}
 .dominant-info{{text-align:left}}
 .dominant-type{{font-size:20px;font-weight:700;color:var(--txt);margin-bottom:8px}}
 .dominant-desc{{font-size:14px;color:var(--dim);line-height:1.6}}
 .motivation-radar{{position:relative;width:200px;height:200px;margin:0 auto 25px}}
 .radar-svg{{width:100%;height:100%}}
+.radar-svg polygon[fill*="rgba(255,107,157"]{{opacity:0;animation:radar-grow 1.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;transform-origin:center;animation-play-state:paused}}
+.motivation-radar.animated .radar-svg polygon{{animation-play-state:running}}
+.radar-svg circle{{opacity:0;animation:radar-dot 0.4s ease-out forwards;animation-play-state:paused}}
+.motivation-radar.animated .radar-svg circle{{animation-play-state:running}}
+.radar-svg circle:nth-child(1){{animation-delay:1.2s}}
+.radar-svg circle:nth-child(2){{animation-delay:1.35s}}
+.radar-svg circle:nth-child(3){{animation-delay:1.5s}}
+.radar-svg circle:nth-child(4){{animation-delay:1.65s}}
+.radar-svg circle:nth-child(5){{animation-delay:1.8s}}
+@keyframes radar-grow{{0%{{opacity:0;transform:scale(0) rotate(-10deg)}}50%{{transform:scale(1.1) rotate(5deg)}}100%{{opacity:1;transform:scale(1) rotate(0deg)}}}}
+@keyframes radar-dot{{0%{{opacity:0;r:0}}60%{{r:5}}100%{{opacity:1;r:3}}}}
 .radar-labels{{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}}
-.radar-label{{position:absolute;font-size:10px;color:var(--dim);white-space:nowrap}}
+.radar-label{{position:absolute;font-size:10px;color:var(--dim);white-space:nowrap;opacity:0;transform:scale(0.8);animation:label-pop 0.4s ease-out forwards;animation-play-state:paused}}
+.motivation-radar.animated .radar-label{{animation-play-state:running}}
+.radar-label:nth-child(1){{animation-delay:0.8s}}
+.radar-label:nth-child(2){{animation-delay:0.95s}}
+.radar-label:nth-child(3){{animation-delay:1.1s}}
+.radar-label:nth-child(4){{animation-delay:1.25s}}
+.radar-label:nth-child(5){{animation-delay:1.4s}}
+@keyframes label-pop{{0%{{opacity:0;transform:scale(0.8)}}100%{{opacity:1;transform:scale(1)}}}}
 .motivation-bars{{background:var(--bg2);border-radius:12px;padding:20px;margin-bottom:20px}}
 .bars-title{{font-size:14px;font-weight:600;color:var(--txt);margin-bottom:15px;text-align:center}}
 .motive-item{{margin-bottom:12px;padding:12px;background:var(--bg2);border-radius:10px}}
@@ -6586,8 +6996,9 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
     .chat-brief,.group-brief{{flex:0 0 100%;order:1;padding-left:43px;margin-top:2px}}
     .chat-toggle{{position:absolute;right:15px;top:15px}}
     
-    /* 各section底部留空 */
-    .section{{padding-bottom:80px}}
+    /* 各section间距缩短 */
+    .section{{padding:30px 0 50px}}
+    .section-subtitle{{margin-bottom:20px}}
     
     /* 用户画像卡片 */
     .profile-card{{margin:20px 15px}}
@@ -6684,7 +7095,7 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 /* 结束页增强 */
 .ending-section{{min-height:80vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:60px 20px;position:relative;z-index:1}}
 .ending-emoji{{font-size:70px;margin-bottom:25px;animation:pulse 2s infinite}}
-.ending-title{{font-size:clamp(28px,7vw,48px);font-weight:800;background:linear-gradient(135deg,var(--pink),var(--cyan),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:30px}}
+.ending-title{{font-size:clamp(28px,7vw,48px);font-weight:800;background:linear-gradient(135deg,var(--pink),var(--cyan),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:20px}}
 .ending-highlights{{
     font-size:clamp(13px,2.8vw,16px);
     color:rgba(255,255,255,0.85);
@@ -6747,6 +7158,9 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 <!-- 光晕效果 -->
 <div class="glow-orbs" id="glowOrbs"></div>
 
+<!-- 水彩线条装饰 -->
+<div class="watercolor-strokes"></div>
+
 <!-- 漂浮emoji -->
 <div class="meteors" id="meteors"></div>
 
@@ -6773,13 +7187,10 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 <!-- 开场页 -->
 <section class="hero" id="hero">
     <div class="intro-animation-layer" id="introAnimationLayer"></div>
-    <div class="hero-content" id="heroContent" style="opacity:0">
+    <div class="hero-content" id="heroContent" style="opacity:0;transform:translateY(30px)">
         <div class="hero-year">2025</div>
         <div class="hero-sub">年度微信聊天报告</div>
         <div class="hero-intro">这一年，你用文字编织了多少故事？</div>
-        <div class="hero-story">
-            {generate_story_intro()}
-        </div>
         <div class="hero-slogan" id="heroSlogan"></div>
         <div class="hero-stats">
             <div class="hero-stat"><div class="hero-stat-val"><span class="num" data-val="{total_msgs}">{total_msgs:,}</span></div><div class="hero-stat-lbl">总消息</div></div>
@@ -6799,7 +7210,7 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 <!-- 年度来信 -->
 <section class="section" id="annual-letter" style="background:var(--bg2)">
     <h2 class="section-title">💌 年度来信</h2>
-    <p class="section-subtitle">给最重要的人，写一封跨越时光的信</p>
+    <p class="section-subtitle">你最好的朋友，有一封信想给你</p>
     <div class="container">
         {make_annual_letter()}
     </div>
@@ -6907,6 +7318,9 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 </section>
 
 <!-- 年度聊天颜色 -->
+<!-- PC端双列布局开始 -->
+<div class="sections-grid">
+
 <section class="section" id="chat-colors">
     <h2 class="section-title">🎨 年度聊天色彩</h2>
     <p class="section-subtitle">每一种颜色，都是一段独特的心情</p>
@@ -6917,7 +7331,7 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 </section>
 
 <!-- 节日聊天分析 -->
-<section class="section" id="festival" style="background:var(--bg2)">
+<section class="section" id="festival">
     <h2 class="section-title">🎉 节日聊天图鉴</h2>
     <p class="section-subtitle">那些特殊日子里，你和谁在一起（聊天）</p>
     <div class="container">
@@ -6935,7 +7349,7 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 </section>
 
 <!-- 表情气质分析 -->
-<section class="section" id="emoji-analysis" style="background:var(--bg2)">
+<section class="section" id="emoji-analysis">
     <h2 class="section-title">😊 你的表情气质</h2>
     <p class="section-subtitle">表情是文字之外的第二语言</p>
     <div class="container">
@@ -6944,7 +7358,7 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 </section>
 
 <!-- 24小时聊天节奏 -->
-<section class="section" id="rhythm" style="background:var(--bg2)">
+<section class="section" id="rhythm">
     <h2 class="section-title">🕐 你的社交节奏</h2>
     <p class="section-subtitle">每个时段的消息，都是你生活韵律的一部分</p>
     <div class="container">
@@ -6961,6 +7375,9 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
         {make_energy_wave()}
     </div>
 </section>
+
+</div>
+<!-- PC端双列布局结束 -->
 
 <!-- 用户画像预测 -->
 <section class="section" id="user-profile" style="background:var(--bg2)">
@@ -7372,20 +7789,49 @@ function animateNumbers(){{
                 if(el.dataset.animated)return;
                 el.dataset.animated='1';
                 const target=parseFloat(el.dataset.val)||0;
-                const duration=1200;
+                const duration=1800;  // 延长动画时间
                 const start=performance.now();
+                
+                // 添加开始动画的视觉效果
+                el.style.transform = 'scale(1.1)';
+                el.style.color = 'var(--cyan)';
+                
+                function easeOutExpo(x) {{
+                    return x === 1 ? 1 : 1 - Math.pow(2, -10 * x);
+                }}
+                
                 function update(now){{
                     const progress=Math.min((now-start)/duration,1);
-                    const eased=1-Math.pow(1-progress,3);
-                    el.textContent=Math.floor(target*eased).toLocaleString();
-                    if(progress<1)requestAnimationFrame(update);
-                    else el.textContent=target.toLocaleString();
+                    const eased=easeOutExpo(progress);
+                    const current = Math.floor(target*eased);
+                    el.textContent=current.toLocaleString();
+                    
+                    // 数字变化时的微动效
+                    if(progress < 0.8) {{
+                        el.style.transform = `scale(${{1 + 0.1 * (1-progress)}})`;
+                    }} else {{
+                        el.style.transform = 'scale(1)';
+                    }}
+                    
+                    if(progress<1){{
+                        requestAnimationFrame(update);
+                    }} else {{
+                        el.textContent=target.toLocaleString();
+                        el.style.transform = 'scale(1)';
+                        el.style.color = '';
+                        // 完成时的弹跳效果
+                        el.style.animation = 'numComplete 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                    }}
                 }}
                 requestAnimationFrame(update);
             }}
         }});
-    }},{{threshold:0.3}});
-    document.querySelectorAll('.num').forEach(n=>observer.observe(n));
+    }},{{threshold:0.2}});
+    document.querySelectorAll('.num').forEach((n, index)=>{{
+        n.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s ease';
+        // 延迟观察，避免同时触发
+        setTimeout(() => observer.observe(n), index * 50);
+    }});
 }}
 
 // 进度条动画
@@ -7394,13 +7840,25 @@ function animateBars(){{
         entries.forEach(entry=>{{
             if(entry.isIntersecting){{
                 const bar=entry.target;
+                if(bar.dataset.animated) return;
+                bar.dataset.animated = '1';
                 const w=bar.style.width;
                 bar.style.width='0';
-                setTimeout(()=>bar.style.width=w,100);
+                bar.style.transition='none';
+                
+                // 添加延迟，避免同时触发
+                const delay = Math.random() * 200;
+                setTimeout(()=>{{
+                    bar.style.transition='width 1.2s cubic-bezier(0.4, 0, 0.2, 1)';
+                    bar.style.width=w;
+                }}, 100 + delay);
             }}
         }});
-    }},{{threshold:0.3}});
-    document.querySelectorAll('.rank-fill,.bar-them,.bar-me').forEach(b=>observer.observe(b));
+    }},{{threshold:0.2}});
+    document.querySelectorAll('.rank-fill,.bar-them,.bar-me,.festival-fill').forEach((b, index)=>{{
+        // 延迟观察
+        setTimeout(() => observer.observe(b), index * 30);
+    }});
 }}
 
 // 卡片折叠
@@ -7477,6 +7935,178 @@ document.addEventListener('click',e=>{{
     if(e.target.closest('.nav,.btn,.chat-header,.group-header,.music-btn'))return;
     createFirework(e.clientX,e.clientY);
 }});
+
+// ========== 信封展开动画 ==========
+function openEnvelope(envelope) {{
+    if (envelope.classList.contains('opened')) return;
+    
+    // 添加点击反馈
+    envelope.style.transform = 'scale(0.98)';
+    setTimeout(() => {{
+        envelope.style.transform = '';
+        // 添加opened类触发CSS动画
+        envelope.classList.add('opened');
+    }}, 150);
+    
+    // 创建一些飘落的心形粒子 - 延迟到信封盖翻开后
+    setTimeout(() => {{
+        const rect = envelope.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const topY = rect.top + 80;
+        
+        // 第一波粒子
+        for (let i = 0; i < 15; i++) {{
+            setTimeout(() => {{
+                const heart = document.createElement('div');
+                heart.innerHTML = ['💌', '💕', '✨', '💗', '💖', '🌟', '💫'][Math.floor(Math.random() * 7)];
+                const offsetX = (Math.random() - 0.5) * 150;
+                const moveX = (Math.random() - 0.5) * 80;
+                heart.style.cssText = `
+                    position: fixed;
+                    left: ${{centerX + offsetX}}px;
+                    top: ${{topY}}px;
+                    font-size: ${{14 + Math.random() * 12}}px;
+                    pointer-events: none;
+                    z-index: 1000;
+                    opacity: 0;
+                    animation: heartFloat${{i % 2}} 2.2s ease-out forwards;
+                    --moveX: ${{moveX}}px;
+                `;
+                document.body.appendChild(heart);
+                setTimeout(() => heart.remove(), 2500);
+            }}, i * 60);
+        }}
+    }}, 800);
+    
+    // 第二波粒子 - 信纸展开时
+    setTimeout(() => {{
+        const rect = envelope.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const bottomY = rect.top + rect.height - 50;
+        
+        for (let i = 0; i < 8; i++) {{
+            setTimeout(() => {{
+                const sparkle = document.createElement('div');
+                sparkle.innerHTML = '✨';
+                const offsetX = (Math.random() - 0.5) * 200;
+                sparkle.style.cssText = `
+                    position: fixed;
+                    left: ${{centerX + offsetX}}px;
+                    top: ${{bottomY}}px;
+                    font-size: ${{10 + Math.random() * 8}}px;
+                    pointer-events: none;
+                    z-index: 1000;
+                    opacity: 0;
+                    animation: sparkleRise 1.5s ease-out forwards;
+                `;
+                document.body.appendChild(sparkle);
+                setTimeout(() => sparkle.remove(), 1800);
+            }}, i * 100);
+        }}
+    }}, 2500);
+}}
+
+// 添加sparkle上升动画
+(function() {{
+    if (document.getElementById('sparkleRiseStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'sparkleRiseStyle';
+    style.textContent = `
+        @keyframes sparkleRise {{
+            0% {{ transform: translateY(0) scale(0); opacity: 0; }}
+            20% {{ opacity: 1; transform: translateY(-10px) scale(1.2); }}
+            100% {{ transform: translateY(-60px) scale(0.5); opacity: 0; }}
+        }}
+    `;
+    document.head.appendChild(style);
+}})();
+
+// 心形飘落动画样式
+(function() {{
+    if (document.getElementById('heartFloatStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'heartFloatStyle';
+    style.textContent = `
+        @keyframes heartFloat0 {{
+            0% {{ transform: translateY(0) translateX(0) scale(0) rotate(0deg); opacity: 0; }}
+            10% {{ transform: translateY(-20px) translateX(5px) scale(1.3) rotate(-10deg); opacity: 1; }}
+            50% {{ opacity: 0.8; }}
+            100% {{ transform: translateY(-150px) translateX(var(--moveX, 30px)) scale(0.2) rotate(30deg); opacity: 0; }}
+        }}
+        @keyframes heartFloat1 {{
+            0% {{ transform: translateY(0) translateX(0) scale(0) rotate(0deg); opacity: 0; }}
+            10% {{ transform: translateY(-15px) translateX(-5px) scale(1.2) rotate(10deg); opacity: 1; }}
+            50% {{ opacity: 0.8; }}
+            100% {{ transform: translateY(-140px) translateX(var(--moveX, -30px)) scale(0.3) rotate(-25deg); opacity: 0; }}
+        }}
+    `;
+    document.head.appendChild(style);
+}})();
+
+// ========== 第一名揭晓动画 ==========
+function revealChampion(teaser) {{
+    const card = teaser.closest('.chemistry-champion');
+    if (!card || card.dataset.revealed === 'true') return;
+    
+    // 标记为已揭晓
+    card.dataset.revealed = 'true';
+    card.classList.add('revealed');
+    
+    // 直接操作DOM - 隐藏teaser，显示content
+    const teaserEl = card.querySelector('.champion-teaser');
+    const contentEl = card.querySelector('.champion-content');
+    
+    if (teaserEl) {{
+        teaserEl.style.display = 'none';
+    }}
+    
+    if (contentEl) {{
+        contentEl.style.display = 'flex';
+        contentEl.style.opacity = '1';
+        contentEl.style.animation = 'champion-reveal 0.8s ease-out';
+    }}
+    
+    // 庆祝效果
+    card.style.animation = 'champion-celebrate 0.5s ease-out';
+    
+    // 创建庆祝粒子
+    const rect = card.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    // 撒花/星星效果
+    const emojis = ['🎉', '✨', '🌟', '💫', '⭐', '🏆', '👑', '💎'];
+    for (let i = 0; i < 20; i++) {{
+        setTimeout(() => {{
+            const particle = document.createElement('div');
+            particle.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+            const angle = (i / 20) * Math.PI * 2;
+            const distance = 80 + Math.random() * 60;
+            const endX = Math.cos(angle) * distance;
+            const endY = Math.sin(angle) * distance;
+            
+            particle.style.cssText = `
+                position: fixed;
+                left: ${{centerX}}px;
+                top: ${{centerY}}px;
+                font-size: ${{16 + Math.random() * 12}}px;
+                pointer-events: none;
+                z-index: 1000;
+                transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+                opacity: 1;
+            `;
+            document.body.appendChild(particle);
+            
+            // 触发动画
+            requestAnimationFrame(() => {{
+                particle.style.transform = `translate(${{endX}}px, ${{endY}}px) scale(0)`;
+                particle.style.opacity = '0';
+            }});
+            
+            setTimeout(() => particle.remove(), 1000);
+        }}, i * 30);
+    }}
+}}
 
 // ========== 背景音乐控制 ==========
 let isMuted = true;
@@ -7564,6 +8194,7 @@ function animateText() {{
                 cards.forEach((card, index) => {{
                     setTimeout(() => {{
                         card.classList.add('visible');
+                        card.classList.add('animated');  // 触发环形进度条动画
                     }}, index * 200);  // 每张卡片延迟200ms
                 }});
                 chemistryObserver.unobserve(entry.target);  // 只触发一次
@@ -7575,6 +8206,21 @@ function animateText() {{
     if (chemistryList) {{
         chemistryObserver.observe(chemistryList);
     }}
+    
+    // 图表动画触发Observer - 折线图、雷达图、能量曲线等
+    const chartObserver = new IntersectionObserver((entries) => {{
+        entries.forEach(entry => {{
+            if (entry.isIntersecting) {{
+                entry.target.classList.add('animated');
+                chartObserver.unobserve(entry.target);
+            }}
+        }});
+    }}, {{threshold: 0.1}});  // 10%进入视口就触发动画
+    
+    // 观察所有需要滚动触发动画的图表元素
+    document.querySelectorAll('.trends-chart, .motivation-radar, .energy-chart, .health-summary, .types-chart').forEach(el => {{
+        chartObserver.observe(el);
+    }});
 }}
 
 // ========== 音乐按钮拖动功能 ==========
@@ -8259,96 +8905,78 @@ function createHeroParticles() {{
     if (!hero || !layer) return;
     
     const data = window.INTRO_ANIMATION_DATA || {{}};
-    const snippets = data.snippets || ['在吗？', '好的', '哈哈', '😂', '晚安'];
+    const snippets = data.snippets || ['今天吃什么', '下班了', '周末有空吗', '想你了', '晚安好梦'];
     const emojis = data.emojis || ['😂', '🥰', '👍', '❤️'];
     const monthly = data.monthly || [];
     const stats = data.stats || {{}};
     const peakMonth = data.peakMonth || 0;
     
-    let phase = 0;
-    const totalDuration = 30000; // 总时长30秒
-    
-    // 阶段1：大量消息粒子飞入（0-5s）
+    // 阶段1：直接显示问候语
     function phase1_particles() {{
-        layer.innerHTML = '<div class="intro-narrative"><div class="intro-narrative-text" style="animation-delay:0s">这一年，你发出的每一条消息...</div></div>';
+        const ownerName = data.ownerName || '朋友';
         
-        // 创建海量飞入的消息粒子 - 至少半屏
-        for (let i = 0; i < 300; i++) {{
-            setTimeout(() => {{
-                const particle = document.createElement('div');
-                particle.className = 'intro-text-particle';
-                particle.textContent = snippets[Math.floor(Math.random() * snippets.length)];
-                particle.style.left = Math.random() * 100 + '%';
-                particle.style.bottom = '-50px';
-                particle.style.animationDuration = (2.5 + Math.random() * 2) + 's';
-                particle.style.fontSize = (12 + Math.random() * 14) + 'px';
-                particle.style.color = ['rgba(255,107,157,0.95)', 'rgba(78,205,196,0.95)', 'rgba(167,139,250,0.95)', 'rgba(255,215,0,0.9)'][Math.floor(Math.random() * 4)];
-                particle.style.textShadow = '0 0 10px currentColor';
-                layer.appendChild(particle);
-                
-                setTimeout(() => particle.remove(), 5000);
-            }}, i * 15); // 更密集的间隔
-        }}
-    }}
-    
-    // 阶段2：海量聊天内容高速扫过（5-10s）
-    function phase2_textStream() {{
-        layer.innerHTML = '<div class="intro-narrative"><div class="intro-narrative-text">都汇成了流动的记忆...</div></div>';
-        
-        // 高速文字流容器
-        const streamContainer = document.createElement('div');
-        streamContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden';
-        layer.appendChild(streamContainer);
-        
-        // 添加流动动画的CSS
-        if (!document.getElementById('streamStyle')) {{
+        if (!document.getElementById('greetingStyle')) {{
             const style = document.createElement('style');
-            style.id = 'streamStyle';
+            style.id = 'greetingStyle';
             style.textContent = `
-                @keyframes stream-left {{
-                    0% {{ transform: translateX(100vw); opacity: 0; }}
-                    5% {{ opacity: 1; }}
-                    95% {{ opacity: 1; }}
-                    100% {{ transform: translateX(-100vw); opacity: 0; }}
+                .greeting-container {{
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    text-align: center;
+                    z-index: 100;
                 }}
-                @keyframes stream-right {{
-                    0% {{ transform: translateX(-100vw); opacity: 0; }}
-                    5% {{ opacity: 1; }}
-                    95% {{ opacity: 1; }}
-                    100% {{ transform: translateX(100vw); opacity: 0; }}
+                .greeting-name {{
+                    font-size: clamp(36px, 10vw, 56px);
+                    font-weight: 800;
+                    background: linear-gradient(135deg, var(--pink), var(--cyan));
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    opacity: 0;
+                    animation: name-appear 1.2s ease-out 0.5s forwards;
+                }}
+                .greeting-text {{
+                    font-size: clamp(20px, 5vw, 28px);
+                    color: var(--txt);
+                    margin-top: 25px;
+                    opacity: 0;
+                    animation: text-appear 1s ease-out 1.5s forwards;
+                }}
+                .greeting-year {{
+                    font-size: clamp(14px, 3vw, 18px);
+                    color: var(--dim);
+                    margin-top: 15px;
+                    opacity: 0;
+                    animation: text-appear 1s ease-out 2.2s forwards;
+                }}
+                @keyframes name-appear {{
+                    0% {{ opacity: 0; transform: translateY(30px) scale(0.8); }}
+                    100% {{ opacity: 1; transform: translateY(0) scale(1); }}
+                }}
+                @keyframes text-appear {{
+                    0% {{ opacity: 0; transform: translateY(15px); }}
+                    100% {{ opacity: 1; transform: translateY(0); }}
                 }}
             `;
             document.head.appendChild(style);
         }}
         
-        // 创建海量消息流 - 多行同时
-        for (let row = 0; row < 15; row++) {{
-            for (let i = 0; i < 12; i++) {{
-                setTimeout(() => {{
-                    const text = document.createElement('div');
-                    const content = [...snippets, ...emojis][Math.floor(Math.random() * (snippets.length + emojis.length))];
-                    const direction = row % 2 === 0 ? 'left' : 'right';
-                    const topPos = 5 + row * 6;
-                    text.textContent = content;
-                    text.style.cssText = `
-                        position:absolute;
-                        top:${{topPos}}%;
-                        left:0;
-                        font-size:${{16 + Math.random() * 20}}px;
-                        font-weight:${{Math.random() > 0.5 ? '600' : '400'}};
-                        color:rgba(255,255,255,${{0.5 + Math.random() * 0.5}});
-                        white-space:nowrap;
-                        animation:stream-${{direction}} ${{2.5 + Math.random() * 1.5}}s linear forwards;
-                        text-shadow:0 0 20px rgba(255,107,157,0.8);
-                    `;
-                    streamContainer.appendChild(text);
-                    setTimeout(() => text.remove(), 5000);
-                }}, row * 100 + i * 300);
-            }}
-        }}
+        layer.innerHTML = `
+            <div class="greeting-container">
+                <div class="greeting-name">${{ownerName}}</div>
+                <div class="greeting-text">2025年，辛苦了 ✨</div>
+                <div class="greeting-year">这一年的聊天记录，都在这里</div>
+            </div>
+        `;
     }}
     
-    // 阶段3：年度热力图展示（10-18s）- 加大尺寸
+    // 阶段2：空函数（已合并到phase1）
+    function phase2_textStream() {{
+        // 已合并到phase1
+    }}
+    
+    // 阶段3：年度热力图展示（10-15s）- 加大bar长度
     function phase3_heatmap() {{
         layer.innerHTML = `
             <div class="intro-narrative"><div class="intro-narrative-text" style="font-size:28px">📅 2025 聊天年历</div></div>
@@ -8358,7 +8986,6 @@ function createHeroParticles() {{
         const heatmap = document.getElementById('introHeatmap');
         const maxCount = Math.max(...monthly.map(m => m.count || 0)) || 1;
         
-        // 添加热力图样式 - 加大尺寸
         if (!document.getElementById('heatmapIntroStyle')) {{
             const style = document.createElement('style');
             style.id = 'heatmapIntroStyle';
@@ -8369,8 +8996,8 @@ function createHeroParticles() {{
                     left: 50%;
                     transform: translate(-50%, -50%);
                     display: flex;
-                    gap: 12px;
-                    padding: 40px 50px;
+                    gap: 15px;
+                    padding: 40px 60px;
                     background: rgba(0,0,0,0.4);
                     border-radius: 24px;
                     backdrop-filter: blur(15px);
@@ -8383,18 +9010,18 @@ function createHeroParticles() {{
                     gap: 12px;
                     opacity: 0;
                     transform: translateY(30px);
-                    transition: all 0.6s ease-out;
+                    transition: all 0.5s ease-out;
                 }}
                 .intro-heatmap-month.show {{
                     opacity: 1;
                     transform: translateY(0);
                 }}
                 .intro-heatmap-bar {{
-                    width: 40px;
+                    width: 45px;
                     background: linear-gradient(to top, var(--pink), var(--cyan));
                     border-radius: 6px;
-                    transition: height 1s ease-out;
-                    min-height: 8px;
+                    transition: height 0.8s ease-out;
+                    min-height: 10px;
                 }}
                 .intro-heatmap-label {{
                     font-size: 14px;
@@ -8406,7 +9033,7 @@ function createHeroParticles() {{
                     color: var(--txt);
                     font-weight: 600;
                     opacity: 0;
-                    transition: opacity 0.5s;
+                    transition: opacity 0.3s;
                 }}
                 .intro-heatmap-month.show .intro-heatmap-count {{
                     opacity: 1;
@@ -8421,34 +9048,30 @@ function createHeroParticles() {{
                 @media (max-width: 768px) {{
                     .intro-heatmap {{
                         gap: 6px;
-                        padding: 25px 20px;
+                        padding: 25px 15px;
                     }}
                     .intro-heatmap-bar {{
                         width: 22px;
                     }}
                     .intro-heatmap-label {{
-                        font-size: 11px;
+                        font-size: 10px;
                     }}
                     .intro-heatmap-count {{
-                        font-size: 10px;
+                        font-size: 9px;
                     }}
                 }}
             `;
             document.head.appendChild(style);
         }}
         
-        setTimeout(() => {{
-            heatmap.style.opacity = '1';
-        }}, 300);
-        
         monthly.forEach((m, i) => {{
             setTimeout(() => {{
                 const month = document.createElement('div');
                 month.className = 'intro-heatmap-month' + (i === peakMonth ? ' peak' : '');
-                const height = Math.max(30, (m.count / maxCount) * 200);
+                const height = Math.max(40, (m.count / maxCount) * 250);  // 增大高度
                 month.innerHTML = `
                     <div class="intro-heatmap-count">${{m.count > 1000 ? (m.count/1000).toFixed(1)+'k' : m.count}}</div>
-                    <div class="intro-heatmap-bar" style="height:0px" data-height="${{height}}"></div>
+                    <div class="intro-heatmap-bar" style="height:0px"></div>
                     <div class="intro-heatmap-label">${{m.month}}月</div>
                 `;
                 heatmap.appendChild(month);
@@ -8456,240 +9079,303 @@ function createHeroParticles() {{
                 setTimeout(() => {{
                     month.classList.add('show');
                     month.querySelector('.intro-heatmap-bar').style.height = height + 'px';
-                }}, 150);
-            }}, i * 250);
+                }}, 100);
+            }}, i * 180);  // 加快速度
         }});
     }}
     
-    // 阶段4：年度旅程 - 垂直时间线样式（18-26s）
+    // 阶段4：年度旅程 - 一开始全部生成，然后自动滚动
     function phase4_journey() {{
         layer.innerHTML = `
             <div class="intro-narrative"><div class="intro-narrative-text" style="font-size:28px">🚀 你的年度旅程</div></div>
-            <div class="intro-journey-timeline" id="introJourney"></div>
+            <div class="intro-timeline-wrapper" id="introJourney">
+                <div class="intro-timeline-line"></div>
+                <div class="intro-timeline-content" id="timelineContent"></div>
+            </div>
         `;
         
-        const journey = document.getElementById('introJourney');
+        const timelineContent = document.getElementById('timelineContent');
+        const wrapper = document.getElementById('introJourney');
         
-        // 添加时间线样式
         if (!document.getElementById('journeyIntroStyle')) {{
             const style = document.createElement('style');
             style.id = 'journeyIntroStyle';
             style.textContent = `
-                .intro-journey-timeline {{
+                .intro-timeline-wrapper {{
                     position: absolute;
-                    top: 50%;
+                    top: 52%;
                     left: 50%;
                     transform: translate(-50%, -50%);
-                    display: flex;
-                    flex-direction: column;
+                    width: 90%;
+                    max-width: 700px;
                     max-height: 70vh;
                     overflow: hidden;
-                    padding: 20px 40px;
                 }}
-                .intro-journey-timeline::before {{
-                    content: '';
+                .intro-timeline-line {{
                     position: absolute;
                     left: 50%;
                     top: 0;
                     bottom: 0;
                     width: 3px;
-                    background: linear-gradient(to bottom, var(--pink), var(--cyan), var(--pink));
+                    background: linear-gradient(to bottom, 
+                        transparent,
+                        var(--pink) 5%,
+                        var(--cyan) 50%,
+                        var(--pink) 95%,
+                        transparent
+                    );
                     transform: translateX(-50%);
-                    opacity: 0.5;
+                    opacity: 1;
+                }}
+                .intro-timeline-content {{
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                    padding: 10px 0;
+                    transition: transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
                 }}
                 .intro-timeline-item {{
                     display: flex;
                     align-items: center;
-                    gap: 20px;
-                    padding: 8px 0;
-                    opacity: 0;
-                    transition: all 0.5s ease-out;
-                }}
-                .intro-timeline-item.show {{
                     opacity: 1;
+                    transition: all 0.3s ease;
                 }}
                 .intro-timeline-item:nth-child(odd) {{
                     flex-direction: row;
-                    transform: translateX(-30px);
                 }}
                 .intro-timeline-item:nth-child(even) {{
                     flex-direction: row-reverse;
-                    transform: translateX(30px);
                 }}
-                .intro-timeline-item.show:nth-child(odd),
-                .intro-timeline-item.show:nth-child(even) {{
-                    transform: translateX(0);
+                .intro-timeline-card {{
+                    flex: 0 0 42%;
+                    padding: 10px 14px;
+                    background: rgba(255,255,255,0.05);
+                    border-radius: 12px;
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    transition: all 0.3s ease;
+                }}
+                .intro-timeline-item.active .intro-timeline-card {{
+                    background: rgba(255,255,255,0.15);
+                    transform: scale(1.08);
+                    box-shadow: 0 0 20px rgba(78,205,196,0.3);
+                }}
+                .intro-timeline-item:nth-child(odd) .intro-timeline-card {{
+                    text-align: right;
+                    border-right: 3px solid var(--cyan);
+                }}
+                .intro-timeline-item:nth-child(even) .intro-timeline-card {{
+                    text-align: left;
+                    border-left: 3px solid var(--cyan);
+                }}
+                .intro-timeline-item.peak .intro-timeline-card {{
+                    background: rgba(255,215,0,0.15);
+                    border-color: #ffd700 !important;
+                }}
+                .intro-timeline-item.peak.active .intro-timeline-card {{
+                    box-shadow: 0 0 25px rgba(255,215,0,0.4);
                 }}
                 .intro-timeline-dot {{
-                    width: 16px;
-                    height: 16px;
+                    flex: 0 0 16%;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                }}
+                .intro-timeline-dot-inner {{
+                    width: 14px;
+                    height: 14px;
                     border-radius: 50%;
                     background: var(--cyan);
                     border: 3px solid var(--bg);
-                    box-shadow: 0 0 15px var(--cyan);
-                    flex-shrink: 0;
-                    z-index: 1;
+                    box-shadow: 0 0 12px var(--cyan);
+                    position: relative;
+                    z-index: 2;
+                    transition: all 0.3s ease;
                 }}
-                .intro-timeline-item.peak .intro-timeline-dot {{
+                .intro-timeline-item.active .intro-timeline-dot-inner {{
+                    transform: scale(1.4);
+                    box-shadow: 0 0 25px var(--cyan);
+                }}
+                .intro-timeline-item.peak .intro-timeline-dot-inner {{
                     background: #ffd700;
                     box-shadow: 0 0 20px #ffd700;
-                    width: 20px;
-                    height: 20px;
+                    width: 18px;
+                    height: 18px;
                 }}
-                .intro-timeline-content {{
-                    background: rgba(255,255,255,0.05);
-                    padding: 12px 18px;
-                    border-radius: 12px;
-                    backdrop-filter: blur(10px);
-                    min-width: 180px;
-                    border: 1px solid rgba(255,255,255,0.1);
+                .intro-timeline-spacer {{
+                    flex: 0 0 42%;
                 }}
-                .intro-timeline-item.peak .intro-timeline-content {{
-                    background: rgba(255,215,0,0.1);
-                    border-color: rgba(255,215,0,0.3);
-                }}
-                .intro-timeline-header {{
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    margin-bottom: 6px;
-                }}
-                .intro-timeline-icon {{
-                    font-size: 22px;
+                .intro-timeline-month {{
+                    font-size: 11px;
+                    color: var(--dim);
+                    margin-bottom: 2px;
                 }}
                 .intro-timeline-name {{
-                    font-size: 15px;
+                    font-size: 14px;
                     font-weight: 600;
                     color: var(--txt);
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }}
+                .intro-timeline-item:nth-child(odd) .intro-timeline-name {{
+                    justify-content: flex-end;
+                }}
+                .intro-timeline-item.peak .intro-timeline-name {{
+                    color: #ffd700;
                 }}
                 .intro-timeline-stats {{
                     font-size: 12px;
                     color: var(--dim);
+                    margin-top: 3px;
                 }}
-                .intro-timeline-stats span {{
+                .intro-timeline-stats strong {{
                     color: var(--cyan);
-                    font-weight: 600;
                 }}
-                .intro-timeline-item.peak .intro-timeline-stats span {{
+                .intro-timeline-item.peak .intro-timeline-stats strong {{
                     color: #ffd700;
                 }}
                 @media (max-width: 768px) {{
-                    .intro-journey-timeline {{
-                        padding: 15px 20px;
+                    .intro-timeline-wrapper {{
+                        max-height: 60vh;
                     }}
-                    .intro-timeline-content {{
-                        min-width: 130px;
-                        padding: 10px 14px;
+                    .intro-timeline-card {{
+                        flex: 0 0 40%;
+                        padding: 6px 8px;
                     }}
-                    .intro-timeline-icon {{
-                        font-size: 18px;
+                    .intro-timeline-dot {{
+                        flex: 0 0 20%;
+                    }}
+                    .intro-timeline-spacer {{
+                        flex: 0 0 40%;
                     }}
                     .intro-timeline-name {{
-                        font-size: 13px;
+                        font-size: 11px;
+                    }}
+                    .intro-timeline-stats {{
+                        font-size: 9px;
+                    }}
+                    .intro-timeline-month {{
+                        font-size: 10px;
+                    }}
+                    .intro-timeline-content {{
+                        gap: 6px;
                     }}
                 }}
             `;
             document.head.appendChild(style);
         }}
         
-        monthly.forEach((m, i) => {{
-            setTimeout(() => {{
-                const item = document.createElement('div');
-                item.className = 'intro-timeline-item' + (i === peakMonth ? ' peak' : '');
-                item.innerHTML = `
-                    <div class="intro-timeline-content">
-                        <div class="intro-timeline-header">
-                            <span class="intro-timeline-icon">${{m.icon}}</span>
-                            <span class="intro-timeline-name">${{m.name}}</span>
-                        </div>
-                        <div class="intro-timeline-stats"><span>${{m.count.toLocaleString()}}</span>条消息 · ${{m.friends}}人</div>
-                    </div>
-                    <div class="intro-timeline-dot"></div>
-                `;
-                journey.appendChild(item);
-                
-                setTimeout(() => item.classList.add('show'), 50);
-            }}, i * 350);
-        }});
-    }}
-    
-    // 阶段5：统计数据爆发（26-29s）
-    function phase5_stats() {{
-        const statItems = [
-            {{ value: stats.totalMsgs || 0, label: '条消息' }},
-            {{ value: stats.lateNight || 0, label: '个深夜陪伴' }},
-            {{ value: stats.friends || 0, label: '位好友' }},
-        ];
-        
-        layer.innerHTML = '';
-        
-        statItems.forEach((item, i) => {{
-            setTimeout(() => {{
-                layer.innerHTML = `
-                    <div class="intro-stat-burst" style="opacity:1;animation:stat-burst 1s ease-out">
-                        <div class="intro-stat-num">${{item.value.toLocaleString()}}</div>
-                        <div class="intro-stat-label">${{item.label}}</div>
-                    </div>
-                `;
-            }}, i * 800);
-        }});
-        
-        // 添加爆发动画CSS
-        if (!document.getElementById('burstStyle')) {{
-            const style = document.createElement('style');
-            style.id = 'burstStyle';
-            style.textContent = `
-                @keyframes stat-burst {{
-                    0% {{ transform: translate(-50%,-50%) scale(0.3); opacity: 0; }}
-                    50% {{ transform: translate(-50%,-50%) scale(1.1); opacity: 1; }}
-                    100% {{ transform: translate(-50%,-50%) scale(1); opacity: 1; }}
-                }}
-            `;
-            document.head.appendChild(style);
-        }}
-    }}
-    
-    // 阶段6：标题显现（29-30s）
-    function phase6_reveal() {{
-        layer.innerHTML = `
-            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;animation:final-reveal 1.2s ease-out">
-                <div style="font-size:clamp(50px,12vw,100px);font-weight:900;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:15px">2025</div>
-                <div style="font-size:22px;color:var(--dim)">年度微信聊天报告</div>
-            </div>
-        `;
-        
-        if (!document.getElementById('revealStyle')) {{
-            const style = document.createElement('style');
-            style.id = 'revealStyle';
-            style.textContent = `
-                @keyframes final-reveal {{
-                    0% {{ opacity: 0; transform: translate(-50%,-50%) scale(0.8); }}
-                    100% {{ opacity: 1; transform: translate(-50%,-50%) scale(1); }}
-                }}
-            `;
-            document.head.appendChild(style);
-        }}
-        
-        // 1.5秒后淡出动画层，显示真正内容
-        setTimeout(() => {{
-            layer.style.transition = 'opacity 1s';
-            layer.style.opacity = '0';
-            heroContent.style.transition = 'opacity 1s';
-            heroContent.style.opacity = '1';
+        // 一次性生成所有月份
+        const totalMonths = monthly.length;
+        for (let i = 0; i < totalMonths; i++) {{
+            const m = monthly[i];
+            const item = document.createElement('div');
+            item.className = 'intro-timeline-item' + (i === peakMonth ? ' peak' : '');
+            item.dataset.index = i;
+            const icon = m.icon || '📅';
+            const badge = i === peakMonth ? ' 🔥' : '';
             
+            item.innerHTML = `
+                <div class="intro-timeline-card">
+                    <div class="intro-timeline-month">${{m.month}}月</div>
+                    <div class="intro-timeline-name"><span>${{icon}}</span>${{m.name}}${{badge}}</div>
+                    <div class="intro-timeline-stats"><strong>${{m.count.toLocaleString()}}</strong> 条消息${{m.peakFriend ? ' · 最多聊 ' + m.peakFriend : ''}}</div>
+                </div>
+                <div class="intro-timeline-dot"><div class="intro-timeline-dot-inner"></div></div>
+                <div class="intro-timeline-spacer"></div>
+            `;
+            timelineContent.appendChild(item);
+        }}
+        
+        // 自动滚动浏览，高亮当前月份
+        let currentHighlight = 0;
+        const items = timelineContent.querySelectorAll('.intro-timeline-item');
+        
+        // 先高亮第一个
+        if (items.length > 0) items[0].classList.add('active');
+        
+        const scrollInterval = setInterval(() => {{
+            // 移除当前高亮
+            if (items[currentHighlight]) items[currentHighlight].classList.remove('active');
+            
+            currentHighlight++;
+            
+            if (currentHighlight >= totalMonths) {{
+                clearInterval(scrollInterval);
+                return;
+            }}
+            
+            // 添加新高亮
+            if (items[currentHighlight]) items[currentHighlight].classList.add('active');
+            
+            // 滚动让当前月份居中可见
+            if (currentHighlight > 2) {{
+                const itemHeight = items[0].offsetHeight + 8;
+                const targetScroll = (currentHighlight - 2) * itemHeight;
+                timelineContent.style.transform = `translateY(${{-targetScroll}}px)`;
+            }}
+        }}, 600);
+    }}
+    
+    // 阶段5：向上滑动显示正式内容（24-26s）
+    function phase5_slideUp() {{
+        // 先显示一个提示
+        const hint = document.createElement('div');
+        hint.style.cssText = `
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--dim);
+            font-size: 14px;
+            animation: bounce-hint 1s ease-in-out infinite;
+        `;
+        hint.innerHTML = '↑ 向上滑动，开启你的年度回忆';
+        layer.appendChild(hint);
+        
+        if (!document.getElementById('slideUpStyle')) {{
+            const style = document.createElement('style');
+            style.id = 'slideUpStyle';
+            style.textContent = `
+                @keyframes bounce-hint {{
+                    0%, 100% {{ transform: translateX(-50%) translateY(0); }}
+                    50% {{ transform: translateX(-50%) translateY(-8px); }}
+                }}
+                @keyframes slide-up-exit {{
+                    0% {{ transform: translateY(0); opacity: 1; }}
+                    100% {{ transform: translateY(-100vh); opacity: 0; }}
+                }}
+                .intro-slide-up {{
+                    animation: slide-up-exit 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+                }}
+            `;
+            document.head.appendChild(style);
+        }}
+        
+        // 1秒后开始向上滑动
+        setTimeout(() => {{
+            layer.classList.add('intro-slide-up');
+            
+            // 同时让heroContent从下方滑入（它已经在translateY(30px)的位置）
+            setTimeout(() => {{
+                heroContent.style.opacity = '1';
+                heroContent.style.transform = 'translateY(0)';
+            }}, 200);
+            
+            // 动画结束后隐藏layer
             setTimeout(() => {{
                 layer.classList.add('hidden');
-            }}, 1000);
-        }}, 1500);
+                layer.style.display = 'none';
+            }}, 1200);
+        }}, 1000);
     }}
     
-    // 执行各阶段（减慢速度）
-    phase1_particles();
-    setTimeout(phase2_textStream, 5000);
-    setTimeout(phase3_heatmap, 10000);
-    setTimeout(phase4_journey, 18000);
-    setTimeout(phase5_stats, 26000);
-    setTimeout(phase6_reveal, 29000);
+    // 执行各阶段 - 年历放完直接切旅程，最后向上滑动
+    phase1_particles();  // 直接显示问候语
+    setTimeout(phase3_heatmap, 5500);   // 5.5秒后显示热力图（增加显示时间）
+    setTimeout(phase4_journey, 10000);   // 10秒后显示年度旅程
+    setTimeout(phase5_slideUp, 17000);  // 17秒后向上滑动结束
 }}
 
 // ========== 打字机效果 ==========
@@ -8741,7 +9427,7 @@ document.addEventListener('DOMContentLoaded',()=>{{
     updateNav();
     initDraggable();
     // typeWriter在开场动画结束后启动（11秒后）
-    setTimeout(typeWriter, 31000);
+    setTimeout(typeWriter, 26000);
     initChemistryAnimation();  // 默契度自动动画
     initEndingCelebration();  // 结尾庆祝效果
     // 默认展开前3个
@@ -8774,7 +9460,7 @@ if __name__ == '__main__':
     import os
     
     # 默认参数
-    data_dir = '.'
+    data_dir = 'data'  # 数据文件夹（json和excel放这里）
     my_name = '远方的熵'  # 你的微信昵称
     
     # 命令行参数
@@ -8782,6 +9468,13 @@ if __name__ == '__main__':
         data_dir = sys.argv[1]
     if len(sys.argv) > 2:
         my_name = sys.argv[2]
+    
+    # 检查data目录是否存在
+    if not os.path.exists(data_dir):
+        print(f"⚠️  数据目录 '{data_dir}' 不存在！")
+        print(f"   请创建 {data_dir} 文件夹并将json/excel文件放入其中")
+        print(f"   或者使用命令行指定目录: python A_report_generator.py <数据目录> <昵称>")
+        sys.exit(1)
     
     print("="*60)
     print("🎆 微信年度聊天报告生成器 - 终极版")
@@ -8855,4 +9548,4 @@ if __name__ == '__main__':
     
     # 执行分析（传递analyze_excel和exclude_file_helper参数）
     results = batch_analyze(data_dir, my_name=my_name, analyze_excel=analyze_excel, exclude_file_helper=exclude_file_helper)
-    generate_final_report(results, output_file, bgm_path=bgm_path, mask_mode=mask_mode)
+    generate_final_report(results, output_file, my_name=my_name, bgm_path=bgm_path, mask_mode=mask_mode)
