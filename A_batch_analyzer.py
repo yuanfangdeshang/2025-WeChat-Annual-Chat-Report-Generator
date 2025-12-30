@@ -319,13 +319,6 @@ def analyze_group_json(filepath, my_name=None):
 
 def analyze_private_excel(df, chat_name, my_name=None):
     """分析私聊Excel数据（包括点头之交：只有一方发消息）"""
-    from A_enhanced_chat_analyzer import (
-        MODAL_WORDS, DEEP_TOPICS, VOCAB_LEVELS,
-        _calc_message_length, _calc_language_style, _calc_emoji_stats,
-        _calc_time_pattern, _calc_response_time, _calc_content_richness,
-        _calc_deep_topics, _calc_conversation_structure, _calc_monthly_trends, _calc_care_invite
-    )
-    
     messages = []
     senders = set()
     
@@ -734,6 +727,13 @@ def analyze_private_excel(df, chat_name, my_name=None):
     all_months = sorted(set(months_me.keys()) | set(months_them.keys()))
     result['monthly'] = {m: {'me': months_me.get(m, 0), 'them': months_them.get(m, 0), 'total': months_me.get(m, 0) + months_them.get(m, 0)} for m in all_months}
     
+    # 每日统计（用于节日分析）
+    daily_counts = defaultdict(int)
+    for m in parsed:
+        day_key = m['time'].strftime('%Y-%m-%d')
+        daily_counts[day_key] += 1
+    result['daily'] = dict(daily_counts)
+    
     # 关怀统计
     care_words = ['好点了', '怎么样了', '还好吗', '注意', '照顾', '保重', '休息', '早点睡', '别太累', '加油', '辛苦', '小心', '多喝水']
     invite_words = ['一起', '要不要', '去不去', '来不来', '走不走', '约', '出来', '见面', '吃饭']
@@ -960,10 +960,6 @@ def generate_summary(private_chats, group_chats):
     # 基础汇总
     total_private_msgs = sum(c['total_msgs'] for c in private_chats)
     total_private_chars = sum(c['total_chars'] for c in private_chats)
-    total_private_days = len(set(
-        d for c in private_chats 
-        for d in [c['date_range'][0], c['date_range'][1]] if d
-    ))
     total_sessions = sum(c['sessions'] for c in private_chats)
     
     # 排行榜生成函数
@@ -1151,7 +1147,13 @@ def save_results(results, output_path):
 if __name__ == '__main__':
     import sys
     
-    data_dir = sys.argv[1] if len(sys.argv) > 1 else '/mnt/user-data/uploads'
+    data_dir = sys.argv[1] if len(sys.argv) > 1 else 'data'
+    
+    # 检查data目录是否存在
+    if not os.path.exists(data_dir):
+        print(f"⚠️  数据目录 '{data_dir}' 不存在！")
+        print(f"   请创建 {data_dir} 文件夹并将json/excel文件放入其中")
+        sys.exit(1)
     
     results = batch_analyze(data_dir)
     
