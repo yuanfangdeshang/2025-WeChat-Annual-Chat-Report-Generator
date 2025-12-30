@@ -4,7 +4,7 @@
 
 **项目名称**：微信年度聊天报告生成器（WeChat Annual Chat Report Generator）
 
-**项目版本**：v2.0
+**项目版本**：v1.4.0
 
 **开发时间**：2025年11月-12月
 
@@ -172,17 +172,17 @@
 
 项目代码按功能模块组织，主要包括：
 
-数据导入模块：负责读取和解析JSON格式的聊天记录数据。
+**数据导入模块**：负责读取和解析JSON格式的聊天记录数据。
 
-统计分析模块：负责计算各类统计指标和评分。
+**统计分析模块**：负责计算各类统计指标和评分。
 
-HTML生成模块：负责将统计结果转化为HTML代码。
+**HTML生成模块**：负责将统计结果转化为HTML代码。
 
-样式模块：包含所有CSS样式定义。
+**样式模块（A_styles.py）**：包含所有CSS样式定义，通过 `get_css_styles()` 函数导出。
 
-脚本模块：包含所有JavaScript交互逻辑。
+**脚本模块（A_scripts.py）**：包含所有JavaScript交互逻辑，通过 `get_js_scripts()` 函数导出。
 
-主程序通过调用各模块，完成从数据输入到报告输出的完整流程。
+主程序通过 `from A_styles import get_css_styles` 和 `from A_scripts import get_js_scripts` 导入模块，在生成HTML时调用这两个函数获取样式和脚本内容，完成从数据输入到报告输出的完整流程。
 
 ### 4.4 性能优化
 
@@ -250,7 +250,12 @@ JavaScript使用Intersection Observer API实现滚动触发动画，避免频繁
 
 ### 6.2 代码规模
 
-主程序文件约4200行Python代码，包含完整的HTML、CSS、JavaScript内嵌代码。代码结构清晰，注释完善，便于理解和维护。
+项目采用模块化架构，总计约11000行代码：
+- 主程序文件（A_report_generator.py）约9550行，包含数据处理、HTML生成、动画系统
+- CSS样式模块（A_styles.py）约1200行，包含完整的样式定义和动画效果
+- JS脚本模块（A_scripts.py）约870行，包含交互逻辑和性能优化
+
+v1.4.0 版本全面升级动画系统，优化缓动函数和交互体验，代码更加完善。
 
 ### 6.3 创新点
 
@@ -263,6 +268,19 @@ JavaScript使用Intersection Observer API实现滚动触发动画，避免频繁
 **智能标签生成**：基于行为数据自动生成个性化标签，增强用户的认同感和分享欲。
 
 **单文件输出设计**：生成自包含的HTML文件，无需服务器即可分享和浏览。
+
+**性能优化（v1.3.0新增）**：
+- 使用 `DocumentFragment` 批量DOM操作，减少重绘重排
+- 使用 `requestAnimationFrame` 替代 `setInterval`，动画更流畅
+- 添加 `will-change` 硬件加速，提升低端设备体验
+- 实现懒加载机制，按需加载页面内容
+
+**动画系统升级（v1.4.0新增）**：
+- 全局统一缓动函数 `cubic-bezier(0.4, 0, 0.2, 1)`，体验更一致
+- 数字滚动使用 `easeOutExpo` 缓动 + 完成时弹跳效果
+- 信封拆开动画大幅增强：多阶段粒子特效、hover/click反馈
+- 所有交互元素增加悬停效果：卡片上浮、数字变色、图标旋转
+- 折线图改为"先点后线"动画，更符合直觉
 
 ---
 
@@ -296,12 +314,16 @@ JavaScript使用Intersection Observer API实现滚动触发动画，避免频繁
 
 | 文件名 | 说明 | 代码行数 |
 |--------|------|----------|
-| A_report_generator.py | 主程序：报告生成器 | ~4200行 |
-| A_batch_analyzer.py | 数据分析模块 | ~500行 |
-| A_styles.py | CSS样式模块（可选） | ~800行 |
-| A_scripts.py | JavaScript脚本模块（可选） | ~600行 |
+| A_report_generator.py | 主程序：报告生成器 | ~9550行 |
+| A_batch_analyzer.py | 数据分析模块 | ~1200行 |
+| A_enhanced_chat_analyzer.py | 单文件深度分析 | ~700行 |
+| A_styles.py | CSS样式模块（必需） | ~1200行 |
+| A_scripts.py | JavaScript脚本模块（必需） | ~870行 |
 | README.md | 项目说明文档 | - |
+| CHANGELOG.md | 更新日志 | - |
 | PROJECT_INTRO.md | 项目介绍文档 | - |
+
+**v1.4.0 架构说明**：主程序包含完整的动画系统，通过 `from A_styles import get_css_styles` 和 `from A_scripts import get_js_scripts` 调用样式和脚本模块。三个核心文件（A_report_generator.py、A_styles.py、A_scripts.py）必须在同一目录下运行。
 
 ### B. 运行环境要求
 
@@ -322,9 +344,9 @@ JavaScript使用Intersection Observer API实现滚动触发动画，避免频繁
 
 ---
 
-**文档版本**：v1.0
+**文档版本**：v1.4.0
 
-**最后更新**：2025年12月
+**最后更新**：2024年12月31日
 
 **作者**：远方的熵
 
