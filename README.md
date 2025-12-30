@@ -6,7 +6,8 @@
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
-![Lines](https://img.shields.io/badge/Lines-12000+-brightgreen.svg)
+![Version](https://img.shields.io/badge/Version-1.4.0-orange.svg)
+![Lines](https://img.shields.io/badge/Lines-9500+-brightgreen.svg)
 
 ---
 
@@ -64,7 +65,7 @@
 
 **暗色主题**：采用现代化的深色背景设计，搭配渐变色彩和光晕效果，营造沉浸式的浏览体验。
 
-**动态效果**：星空粒子背景、流星雨动画、开场粒子聚合效果、数字滚动递增、卡片淡入滑动等多种动画效果，让报告充满生命力。
+**动态效果**：星空粒子背景、流星雨动画、开场粒子聚合效果、数字滚动递增、卡片淡入滑动等多种动画效果，让报告充满生命力。v1.4.0 版本全面升级动画系统，使用 `cubic-bezier` 缓动函数、`easeOutExpo` 数字滚动、多阶段关键帧动画，交互体验更流畅自然。
 
 **响应式布局**：完美适配桌面端和移动端，针对不同屏幕尺寸优化布局和交互体验。
 
@@ -198,26 +199,32 @@ HTML5 构建页面结构，CSS3 实现样式和动画，原生 JavaScript 实现
 
 ### 项目架构
 
-**模块化设计**：项目采用模块化架构，主要模块包括：
+**模块化设计**：项目采用真正的模块化架构，CSS和JS通过函数调用方式引入，主要模块包括：
 
 ```
 wechat-annual-report/
 │
-├── A_report_generator.py          # 主程序：报告生成器
+├── A_report_generator.py          # 主程序：报告生成器（9550行）
 ├── A_batch_analyzer.py            # 批量数据分析器
 ├── A_enhanced_chat_analyzer.py    # 增强聊天分析器
-├── A_styles.py                    # CSS样式模块
-├── A_scripts.py                   # JavaScript脚本模块
+├── A_styles.py                    # CSS样式模块（1204行）⭐必需
+├── A_scripts.py                   # JavaScript脚本模块（869行）⭐必需
 │
 ├── README.md                      # 项目说明文档
 ├── CHANGELOG.md                   # 更新日志
 ├── PROJECT_INTRO.md               # 项目介绍材料
 ├── requirements.txt               # Python依赖包
 │
-├── example/                       # 示例数据目录
-├── output/                        # 输出目录
+├── data/                          # 数据目录（放json/xlsx文件）
 └── .gitignore                     # Git忽略配置
 ```
+
+**v1.4.0 动画升级**：
+- 全局统一缓动函数 `cubic-bezier(0.4, 0, 0.2, 1)`
+- 数字滚动使用 `easeOutExpo` + 完成弹跳效果
+- 信封拆开动画大幅增强，多阶段粒子特效
+- 所有卡片、按钮、数字增加悬停交互效果
+- 折线图改为"先点后线"动画顺序
 
 **文件命名规范**：所有核心模块文件以 `A_` 开头，便于在文件列表中快速查找和识别。
 
@@ -555,5 +562,5 @@ const slogans = [
   <br>
   <i>"每一条消息，都是一次穿越时空的心意传递"</i>
   <br><br>
-  Made with ❤️ on 2025/12/30
+  Made with ❤️ in 2025
 </p>
