@@ -555,5 +555,5 @@ const slogans = [
   <br>
   <i>"每一条消息，都是一次穿越时空的心意传递"</i>
   <br><br>
-  Made with ❤️ in 2025
+  Made with ❤️ on 2025/12/30
 </p>
