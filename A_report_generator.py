@@ -218,38 +218,63 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 if emoji not in chat_snippets:
                     chat_snippets.append(emoji)
         
-        # 3. 月度数据
-        monthly_data = []
-        month_keywords = {
-            '01': ['新年好', '🎊', '元旦'],
-            '02': ['新年快乐', '🧧', '春节', '过年'],
-            '03': ['春天', '🌸'],
-            '04': ['清明', '踏青'],
-            '05': ['五一', '劳动节', '520'],
-            '06': ['端午', '粽子', '毕业'],
-            '07': ['暑假', '☀️', '好热'],
-            '08': ['立秋', '七夕', '❤️'],
-            '09': ['开学', '中秋', '🥮'],
-            '10': ['国庆', '🎉', '十一'],
-            '11': ['双十一', '购物', '冷了'],
-            '12': ['圣诞', '🎄', '跨年', '❄️']
+        # 3. 月度数据（增强版，用于热力图和年度旅程）
+        month_info = {
+            '01': {'icon': '🎊', 'name': '新年伊始', 'desc': '新年的问候开启新篇章'},
+            '02': {'icon': '🧧', 'name': '春节团圆', 'desc': '红包与祝福满天飞'},
+            '03': {'icon': '🌸', 'name': '春暖花开', 'desc': '万物复苏的季节'},
+            '04': {'icon': '🌱', 'name': '春意盎然', 'desc': '播种希望的时刻'},
+            '05': {'icon': '🌹', 'name': '劳动光荣', 'desc': '五一假期的欢聚'},
+            '06': {'icon': '☀️', 'name': '仲夏序曲', 'desc': '毕业季的告别与不舍'},
+            '07': {'icon': '🏖️', 'name': '盛夏时光', 'desc': '暑假的自由与快乐'},
+            '08': {'icon': '🌻', 'name': '热情似火', 'desc': '夏日的尾巴'},
+            '09': {'icon': '🍂', 'name': '金秋九月', 'desc': '开学季的新开始'},
+            '10': {'icon': '🎃', 'name': '金秋十月', 'desc': '国庆假期的相聚'},
+            '11': {'icon': '🍁', 'name': '深秋时节', 'desc': '双十一的买买买'},
+            '12': {'icon': '❄️', 'name': '岁末年终', 'desc': '圣诞与新年的期待'},
         }
         
         monthly_totals = defaultdict(int)
-        for c in private_chats + group_chats:
+        monthly_friends = defaultdict(set)
+        monthly_peak = defaultdict(lambda: {'name': '', 'count': 0})
+        
+        for c in private_chats:
+            name = c.get('name', '')
             for k, v in c.get('monthly', {}).items():
                 if k.startswith('2025'):
-                    monthly_totals[k] += v.get('total', 0) if isinstance(v, dict) else v
+                    count = v.get('total', 0) if isinstance(v, dict) else v
+                    month = k.split('-')[1]
+                    monthly_totals[month] += count
+                    if count > 0:
+                        monthly_friends[month].add(name)
+                    if count > monthly_peak[month]['count']:
+                        monthly_peak[month] = {'name': name, 'count': count}
         
+        for c in group_chats:
+            for k, v in c.get('monthly', {}).items():
+                if k.startswith('2025'):
+                    month = k.split('-')[1]
+                    monthly_totals[month] += v.get('total', 0) if isinstance(v, dict) else v
+        
+        monthly_data = []
+        max_count = max(monthly_totals.values()) if monthly_totals else 1
         for m in ['01','02','03','04','05','06','07','08','09','10','11','12']:
-            key = f'2025-{m}'
-            count = monthly_totals.get(key, 0)
-            keywords = month_keywords.get(m, [])
+            count = monthly_totals.get(m, 0)
+            info = month_info.get(m, {'icon': '📅', 'name': f'{int(m)}月', 'desc': ''})
+            peak = monthly_peak.get(m, {'name': '', 'count': 0})
             monthly_data.append({
                 'month': int(m),
                 'count': count,
-                'keywords': keywords
+                'percent': int(count / max_count * 100) if max_count > 0 else 0,
+                'friends': len(monthly_friends.get(m, set())),
+                'icon': info['icon'],
+                'name': info['name'],
+                'desc': info['desc'],
+                'peakFriend': display_name(peak['name'][:6]) if peak['name'] else ''
             })
+        
+        # 找最活跃月份
+        peak_month_idx = max(range(12), key=lambda i: monthly_data[i]['count']) if monthly_data else 0
         
         # 4. 核心统计数据
         total_late = sum(c.get('late_night', 0) for c in private_chats)
@@ -262,9 +287,10 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         # 5. 构建JSON数据
         import json
         animation_data = {
-            'snippets': chat_snippets[:30],  # 限制数量
+            'snippets': chat_snippets[:30],
             'emojis': [e[0] for e in top_emojis[:8]] if top_emojis else ['😂', '🥰', '👍', '❤️', '😊'],
             'monthly': monthly_data,
+            'peakMonth': peak_month_idx,
             'stats': {
                 'totalMsgs': total_msgs,
                 'totalChars': total_chars,
@@ -2112,8 +2138,18 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         # 汇总所有聊天的小时分布数据
         hourly_totals = defaultdict(int)
         
+        # 尝试多个可能的字段名
         for chat in private_chats:
-            hours = chat.get('hour_dist', {})
+            hours = chat.get('hours', {}) or chat.get('hour_dist', {}) or chat.get('hourly', {})
+            for h, count in hours.items():
+                try:
+                    hourly_totals[int(h)] += count
+                except:
+                    pass
+        
+        # 同时统计群聊的小时分布
+        for chat in group_chats:
+            hours = chat.get('hours', {}) or chat.get('hour_dist', {}) or chat.get('hourly', {})
             for h, count in hours.items():
                 try:
                     hourly_totals[int(h)] += count
@@ -2398,53 +2434,51 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         highlights = []
         
         if total_msgs > 50000:
-            highlights.append(f'这一年，你发送了 <strong>{total_msgs:,}</strong> 条消息，每一条都承载着你的心情')
+            highlights.append(f'<strong>{total_msgs:,}</strong> 条消息，满载心情')
         elif total_msgs > 10000:
-            highlights.append(f'这一年，<strong>{total_msgs:,}</strong> 条消息在你的指尖流淌')
+            highlights.append(f'<strong>{total_msgs:,}</strong> 条消息，一字一句皆是你')
         else:
-            highlights.append(f'这一年，{total_msgs:,} 条消息，编织成了你独一无二的故事')
+            highlights.append(f'{total_msgs:,} 条消息，编织独特故事')
         
         if best_friend and best_msgs > 0:
-            highlights.append(f'<strong>{display_name(best_friend[:6])}</strong> 收到了你最多的消息，<strong>{best_msgs:,}</strong> 条对话见证了这份珍贵的情谊')
+            highlights.append(f'<strong>{display_name(best_friend[:6])}</strong> 收到最多消息，<strong>{best_msgs:,}</strong> 条见证情谊')
         
         if late_night_total > 100:
-            highlights.append(f'<strong>{late_night_total}</strong> 条深夜消息，是你最真实的情绪出口')
+            highlights.append(f'<strong>{late_night_total}</strong> 条深夜消息，藏着最真的你')
         elif late_night_total > 30:
-            highlights.append(f'那些深夜还亮着的聊天窗口，藏着你最柔软的心事')
+            highlights.append(f'深夜亮着的窗口，是最柔软的心事')
         
         if total_care > 50:
-            highlights.append(f'<strong>{total_care}</strong> 句关心的话语，是这一年最温暖的注脚')
+            highlights.append(f'<strong>{total_care}</strong> 句关心，是最温暖的注脚')
         elif total_care > 20:
-            highlights.append(f'那些"早点休息"和"注意身体"，是爱的另一种表达')
+            highlights.append(f'"早点休息"，是爱的另一种表达')
         
         if len(sorted_private) > 30:
-            highlights.append(f'<strong>{len(sorted_private)}</strong> 位朋友组成了你的小宇宙，人间烟火，莫过于此')
+            highlights.append(f'<strong>{len(sorted_private)}</strong> 位朋友组成你的小宇宙')
         elif len(sorted_private) > 15:
-            highlights.append(f'<strong>{len(sorted_private)}</strong> 个人的聊天框，每一个都是独特的故事')
+            highlights.append(f'<strong>{len(sorted_private)}</strong> 个聊天框，每个都是故事')
         
         # 生成感悟
         reflections = [
-            '每一条消息，都是一次穿越时空的心意传递',
+            '每一条消息，都是心意的传递',
             '每一次"在吗"，都是鼓起勇气的想念',
-            '那些深夜的对话，藏着白天说不出口的真心话',
-            '感谢那些秒回你的人，他们把你放在心上',
-            '有些话，只有在小小的聊天框里，才敢轻轻说出口',
-            '距离从来不是问题，因为有些人住在心里',
-            '所有的"晚安"背后，都是"我还想再和你多说几句"',
-            '发送键按下的那一刻，是思念抵达的开始',
+            '深夜的对话，藏着白天说不出口的真心',
+            '感谢那些秒回你的人',
+            '有些话，只敢在聊天框里轻轻说',
+            '距离不是问题，因为有些人住在心里',
+            '所有的"晚安"背后，都是"还想多聊一会儿"',
+            '发送键按下的那一刻，思念开始抵达',
         ]
         import random
         reflection = random.choice(reflections)
         
         # 新年寄语
         wishes = [
-            '2026，愿你的消息列表里，都是让你嘴角上扬的名字',
-            '新的一年，继续做彼此的树洞，继续是彼此的港湾',
-            '愿每一条消息都被认真阅读，每一份心意都被温柔接住',
-            '2026，希望那个"正在输入..."的人，永远不会变成"对方正在输入..."然后消失',
-            '下一年，继续在这里相遇，继续说那些只有我们才懂的暗语',
-            '愿你发出的每一条消息，都能被期待它的人收到',
-            '2026，愿我们都能勇敢一点，把想说的话说出来',
+            '2026，愿消息列表都是让你开心的名字',
+            '新的一年，继续做彼此的树洞',
+            '愿每一份心意都被温柔接住',
+            '2026，勇敢一点，把想说的话说出来',
+            '愿你发出的每一条消息，都能被期待的人收到',
         ]
         wish = random.choice(wishes)
         
@@ -5411,18 +5445,18 @@ body{{
 /* 开场动画层 */
 .intro-animation-layer{{position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;pointer-events:none;overflow:hidden}}
 .intro-animation-layer.hidden{{display:none}}
-.intro-text-particle{{position:absolute;font-size:14px;color:rgba(255,255,255,0.8);white-space:nowrap;animation:float-up 3s ease-out forwards;text-shadow:0 0 10px rgba(255,107,157,0.5)}}
+.intro-text-particle{{position:absolute;font-size:clamp(14px,3vw,22px);color:rgba(255,255,255,0.9);white-space:nowrap;animation:float-up 3s ease-out forwards;text-shadow:0 0 15px rgba(255,107,157,0.7);font-weight:500}}
 @keyframes float-up{{0%{{opacity:0;transform:translateY(50px)}}20%{{opacity:1}}80%{{opacity:1}}100%{{opacity:0;transform:translateY(-100px)}}}}
-.intro-narrative{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#fff;z-index:20}}
-.intro-narrative-text{{font-size:20px;opacity:0;animation:narrative-fade 2s ease-out forwards;text-shadow:0 2px 20px rgba(0,0,0,0.5)}}
+.intro-narrative{{position:absolute;top:15%;left:50%;transform:translateX(-50%);text-align:center;color:#fff;z-index:20;width:90%}}
+.intro-narrative-text{{font-size:clamp(22px,5vw,36px);opacity:0;animation:narrative-fade 2s ease-out forwards;text-shadow:0 2px 30px rgba(0,0,0,0.6)}}
 @keyframes narrative-fade{{0%{{opacity:0;transform:translateY(20px)}}50%{{opacity:1;transform:translateY(0)}}100%{{opacity:0;transform:translateY(-10px)}}}}
 .intro-timeline{{position:absolute;bottom:30%;left:50%;transform:translateX(-50%);display:flex;gap:8px;opacity:0}}
 .intro-month{{display:flex;flex-direction:column;align-items:center;gap:4px}}
 .intro-month-bar{{width:20px;background:linear-gradient(to top,var(--pink),var(--cyan));border-radius:3px;transition:height 0.5s ease-out}}
 .intro-month-label{{font-size:10px;color:var(--dim)}}
 .intro-stat-burst{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;opacity:0}}
-.intro-stat-num{{font-size:60px;font-weight:900;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
-.intro-stat-label{{font-size:16px;color:var(--dim);margin-top:5px}}
+.intro-stat-num{{font-size:clamp(60px,15vw,120px);font-weight:900;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+.intro-stat-label{{font-size:clamp(18px,4vw,28px);color:var(--dim);margin-top:10px}}
 .hero-content{{position:relative;z-index:5;transition:opacity 0.8s ease-out}}
 
 .hero-year{{font-size:clamp(60px,18vw,160px);font-weight:900;background:linear-gradient(135deg,var(--pink),var(--cyan),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:glow 4s ease-in-out infinite,hero-year-in 1.5s ease-out}}
@@ -5830,6 +5864,8 @@ body{{
 /* 容器 */
 .container{{max-width:1400px;margin:0 auto;padding:0 15px}}
 .section{{padding:60px 0;position:relative;z-index:1}}
+#chemistry{{padding-bottom:20px}}
+#friend-trends{{padding-top:20px}}
 .section-title{{font-size:clamp(20px,5vw,32px);font-weight:700;text-align:center;margin-bottom:15px;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
 .section-subtitle{{font-size:clamp(12px,2.5vw,14px);color:var(--dim);text-align:center;margin-bottom:40px;font-style:italic}}
 
@@ -6408,12 +6444,12 @@ td:first-child,th:first-child{{text-align:left}}
 .radar-label{{position:absolute;font-size:10px;color:var(--dim);white-space:nowrap}}
 .motivation-bars{{background:var(--bg2);border-radius:12px;padding:20px;margin-bottom:20px}}
 .bars-title{{font-size:14px;font-weight:600;color:var(--txt);margin-bottom:15px;text-align:center}}
-.motive-item{{margin-bottom:12px}}
-.motive-header{{display:flex;justify-content:space-between;margin-bottom:5px}}
-.motive-name{{font-size:13px;color:var(--txt)}}
-.motive-score{{font-size:12px;color:var(--dim)}}
-.motive-bar{{height:10px;background:var(--bg3);border-radius:5px;overflow:hidden}}
-.motive-fill{{height:100%;border-radius:5px;transition:width 1s}}
+.motive-item{{margin-bottom:12px;padding:12px;background:var(--bg2);border-radius:10px}}
+.motive-header{{display:flex;justify-content:space-between;margin-bottom:8px}}
+.motive-name{{font-size:14px;color:var(--txt);font-weight:500}}
+.motive-score{{font-size:14px;color:var(--cyan);font-weight:600}}
+.motive-bar{{height:14px;background:var(--bg3);border-radius:7px;overflow:hidden}}
+.motive-fill{{height:100%;border-radius:7px;transition:width 1s}}
 .motivation-insight{{background:linear-gradient(135deg,rgba(255,107,157,0.1),rgba(167,139,250,0.1));border-radius:12px;padding:15px;display:flex;gap:12px;align-items:flex-start}}
 .quality-cards{{display:flex;flex-direction:column;gap:15px;margin-bottom:20px}}
 .quality-card{{display:flex;align-items:center;gap:15px;background:var(--bg2);border-radius:12px;padding:15px}}
@@ -6543,6 +6579,13 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
     /* 私聊详情卡片展开后内容不被遮挡 */
     .chat-card.open .chat-body,.group-card.open .chat-body{{max-height:5000px}}
     
+    /* 私聊卡片头部 - 修复姓名被挤掉问题 */
+    .chat-header,.group-header{{flex-wrap:wrap;padding:12px 15px;gap:8px;position:relative}}
+    .chat-rank,.group-rank{{font-size:16px;min-width:35px}}
+    .chat-name,.group-name{{flex:1;min-width:80px;font-size:14px}}
+    .chat-brief,.group-brief{{flex:0 0 100%;order:1;padding-left:43px;margin-top:2px}}
+    .chat-toggle{{position:absolute;right:15px;top:15px}}
+    
     /* 各section底部留空 */
     .section{{padding-bottom:80px}}
     
@@ -6588,6 +6631,21 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
     .moment-icon{{font-size:26px}}
     .moment-value{{font-size:16px}}
     
+    /* 群聊作息 - 手机端两行布局 */
+    .gtc-timeline{{display:none}}
+    .gtc-group{{flex-wrap:wrap;gap:6px;padding:10px;background:var(--bg3);border-radius:10px}}
+    .gtc-name{{width:100%;text-align:left;font-size:13px;font-weight:500;margin-bottom:2px}}
+    .gtc-hours{{width:100%;order:1;height:16px}}
+    .gtc-info{{width:auto;flex-direction:row;gap:10px;order:2;margin-top:4px}}
+    .gtc-peak,.gtc-type{{font-size:11px}}
+    
+    /* 社交动机 - 手机端bar加宽 */
+    .motive-bar{{height:16px;border-radius:8px}}
+    .motive-header{{margin-bottom:8px}}
+    .motive-name{{font-size:14px;font-weight:500}}
+    .motive-score{{font-size:14px;font-weight:600;color:var(--cyan)}}
+    .motive-item{{margin-bottom:15px;padding:12px;background:var(--bg2);border-radius:10px}}
+    
     /* 页脚多行显示 */
     footer p{{margin-bottom:5px}}
 }}
@@ -6628,31 +6686,33 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 .ending-emoji{{font-size:70px;margin-bottom:25px;animation:pulse 2s infinite}}
 .ending-title{{font-size:clamp(28px,7vw,48px);font-weight:800;background:linear-gradient(135deg,var(--pink),var(--cyan),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:30px}}
 .ending-highlights{{
-    font-size:clamp(14px,3vw,17px);
+    font-size:clamp(13px,2.8vw,16px);
     color:rgba(255,255,255,0.85);
-    line-height:2.2;
+    line-height:2;
     max-width:600px;
     margin-bottom:30px;
-    padding:25px 30px;
+    padding:20px 25px;
     background:rgba(255,255,255,0.03);
     border-radius:16px;
     border:1px solid rgba(255,107,157,0.15);
 }}
 .ending-highlights strong{{color:var(--cyan);font-weight:600}}
 .ending-reflection{{
-    font-size:clamp(16px,4vw,20px);
+    font-size:clamp(15px,3.5vw,18px);
     color:var(--pink);
     font-style:italic;
     margin-bottom:25px;
     max-width:500px;
     opacity:0.9;
+    padding:0 15px;
 }}
 .ending-wish{{
-    font-size:clamp(14px,3vw,16px);
+    font-size:clamp(13px,2.8vw,15px);
     color:var(--dim);
     margin-bottom:20px;
     max-width:500px;
-    line-height:1.8;
+    line-height:1.7;
+    padding:0 15px;
 }}
 .ending-signature{{
     font-size:13px;
@@ -6736,244 +6796,12 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
     <script>window.INTRO_ANIMATION_DATA = {prepare_intro_animation_data()};</script>
 </section>
 
-<!-- 年度热力图 -->
-<section class="section heatmap-section" id="heatmap">
-    <h2 class="section-title">📅 2025 聊天年历</h2>
-    <p class="section-subtitle">时间不语，却记录了你每一次的想念与分享</p>
-    <div class="container">
-        <div class="heatmap-title">每月聊天消息数</div>
-        {make_monthly_heatmap()}
-        {make_section_summary('heatmap')}
-    </div>
-</section>
-
-<!-- 年度旅程时间线 -->
-<section class="section" id="journey" style="background:var(--bg2)">
-    <h2 class="section-title">🚀 你的年度旅程</h2>
-    <p class="section-subtitle">12个月，每一步都有故事</p>
-    <div class="container">
-        {make_year_journey()}
-    </div>
-</section>
-
-<!-- 24小时聊天节奏 -->
-<section class="section" id="rhythm" style="background:var(--bg2)">
-    <h2 class="section-title">🕐 你的社交节奏</h2>
-    <p class="section-subtitle">每个时段的消息，都是你生活韵律的一部分</p>
-    <div class="container">
-        {make_hourly_rhythm()}
-        {make_section_summary('rhythm')}
-    </div>
-</section>
-
-<!-- 年度聊天颜色 -->
-<section class="section" id="chat-colors">
-    <h2 class="section-title">🎨 年度聊天色彩</h2>
-    <p class="section-subtitle">每一种颜色，都是一段独特的心情</p>
-    <div class="container">
-        {make_chat_colors()}
-        {make_section_summary('colors')}
-    </div>
-</section>
-
-<!-- 表情气质分析 -->
-<section class="section" id="emoji-analysis" style="background:var(--bg2)">
-    <h2 class="section-title">😊 你的表情气质</h2>
-    <p class="section-subtitle">表情是文字之外的第二语言</p>
-    <div class="container">
-        {make_emoji_analysis()}
-    </div>
-</section>
-
-<!-- 年度词云 -->
-<section class="section" id="word-cloud">
-    <h2 class="section-title">💬 你的年度词汇</h2>
-    <p class="section-subtitle">这些高频词，勾勒出你的表达风格</p>
-    <div class="container">
-        {make_word_cloud()}
-    </div>
-</section>
-
-<!-- 社交动机分析 -->
-<section class="section" id="motivation">
-    <h2 class="section-title">🎯 你的社交动机</h2>
-    <p class="section-subtitle">是什么驱动你打开微信？</p>
-    <div class="container">
-        {make_motivation_analysis()}
-    </div>
-</section>
-
-<!-- 社交健康度 -->
-<section class="section" id="social-health" style="background:var(--bg2)">
-    <h2 class="section-title">💚 你的社交健康度</h2>
-    <p class="section-subtitle">给你的社交生活做一次"体检"</p>
-    <div class="container">
-        {make_social_health()}
-    </div>
-</section>
-
-<!-- 好友亲密度趋势 -->
-<section class="section" id="friendship-trends">
-    <h2 class="section-title">📈 好友互动趋势</h2>
-    <p class="section-subtitle">看看这一年，你和Ta的友情如何变化</p>
-    <div class="container">
-        {make_friendship_trends()}
-    </div>
-</section>
-
-<!-- 聊天关键词云 -->
-<section class="section" id="keywords" style="background:var(--bg2)">
-    <h2 class="section-title">💬 年度关键词</h2>
-    <p class="section-subtitle">这些词，构成了你的2025</p>
-    <div class="container">
-        {make_keyword_cloud()}
-    </div>
-</section>
-
-<!-- 年度社交大事件 -->
-<section class="section" id="events">
-    <h2 class="section-title">🎯 年度社交里程碑</h2>
-    <p class="section-subtitle">这些瞬间，值得被铭记</p>
-    <div class="container">
-        {make_social_events()}
-    </div>
-</section>
-
-<!-- 消息类型分布 -->
-<section class="section" id="msg-types" style="background:var(--bg2)">
-    <h2 class="section-title">📊 消息类型分布</h2>
-    <p class="section-subtitle">你更喜欢用什么方式表达？</p>
-    <div class="container">
-        {make_message_types()}
-    </div>
-</section>
-
-<!-- 社交人格测试 -->
-<section class="section" id="personality">
-    <h2 class="section-title">🧬 你的社交人格</h2>
-    <p class="section-subtitle">基于聊天数据的趣味人格分析</p>
-    <div class="container">
-        {make_personality_test()}
-    </div>
-</section>
-
-<!-- 回复速度对比 -->
-<section class="section" id="reply-speed">
-    <h2 class="section-title">⚡ 回复速度对决</h2>
-    <p class="section-subtitle">谁是秒回王？谁在等待中期待？</p>
-    <div class="container">
-        {make_reply_speed_analysis()}
-    </div>
-</section>
-
-<!-- 节日聊天分析 -->
-<section class="section" id="festival" style="background:var(--bg2)">
-    <h2 class="section-title">🎉 节日聊天图鉴</h2>
-    <p class="section-subtitle">那些特殊日子里，你和谁在一起（聊天）</p>
-    <div class="container">
-        {make_festival_analysis()}
-    </div>
-</section>
-
-<!-- 互动仪式感 -->
-<section class="section" id="ritual">
-    <h2 class="section-title">🌅 你的互动仪式感</h2>
-    <p class="section-subtitle">早安晚安，是最温柔的日常</p>
-    <div class="container">
-        {make_ritual_analysis()}
-    </div>
-</section>
-
-<!-- 聊天高光时刻 -->
-<section class="section" id="highlights" style="background:var(--bg2)">
-    <h2 class="section-title">✨ 年度高光时刻</h2>
-    <p class="section-subtitle">这些瞬间，值得被珍藏</p>
-    <div class="container">
-        {make_highlight_moments()}
-    </div>
-</section>
-
-<!-- 社交人设 -->
-<section class="section" id="persona">
-    <h2 class="section-title">🎭 你的社交人设</h2>
-    <p class="section-subtitle">数据告诉你，你是怎样的社交者</p>
-    <div class="container">
-        {make_social_persona()}
-    </div>
-</section>
-
-<!-- 年度最佳搭档 -->
-<section class="section" id="partners" style="background:var(--bg2)">
-    <h2 class="section-title">🏆 年度最佳搭档</h2>
-    <p class="section-subtitle">不同维度，都有独一无二的Ta</p>
-    <div class="container">
-        {make_best_partners()}
-    </div>
-</section>
-
-<!-- 聊天能量波动 -->
-<section class="section" id="energy">
-    <h2 class="section-title">📈 你的社交能量</h2>
-    <p class="section-subtitle">52周的聊天能量，起伏就是生活的节奏</p>
-    <div class="container">
-        {make_energy_wave()}
-    </div>
-</section>
-
-<!-- 互动质量分析 -->
-<section class="section" id="quality" style="background:var(--bg2)">
-    <h2 class="section-title">💎 互动质量榜</h2>
-    <p class="section-subtitle">消息数量≠关系质量，这些朋友才是真正的"高质量社交"</p>
-    <div class="container">
-        {make_quality_analysis()}
-    </div>
-</section>
-
-<!-- 用户画像预测 -->
-<section class="section" id="user-profile" style="background:var(--bg2)">
-    <h2 class="section-title">🔮 猜猜你是谁</h2>
-    <p class="section-subtitle">文字里藏着你的生活轨迹</p>
-    <div class="container">
-        {make_user_profile_card()}
-    </div>
-</section>
-
 <!-- 年度来信 -->
 <section class="section" id="annual-letter" style="background:var(--bg2)">
     <h2 class="section-title">💌 年度来信</h2>
     <p class="section-subtitle">给最重要的人，写一封跨越时光的信</p>
     <div class="container">
         {make_annual_letter()}
-    </div>
-</section>
-
-<!-- 年度称号（参考网易云）-->
-<section class="section" id="annual-titles">
-    <h2 class="section-title">🏅 你的年度称号</h2>
-    <p class="section-subtitle">这些标签，定义了你独一无二的社交风格</p>
-    <div class="container">
-        {make_annual_titles_card()}
-        {make_section_summary('titles')}
-    </div>
-</section>
-
-<!-- 社交人格（参考MBTI）-->
-<section class="section" id="personality" style="background:var(--bg2)">
-    <h2 class="section-title">🧬 你的社交人格</h2>
-    <p class="section-subtitle">从聊天习惯看你的社交DNA</p>
-    <div class="container">
-        {make_personality_card()}
-        {make_section_summary('personality')}
-    </div>
-</section>
-
-<!-- 年度特殊时刻（参考支付宝）-->
-<section class="section" id="moments">
-    <h2 class="section-title">✨ 年度特别时刻</h2>
-    <p class="section-subtitle">这些瞬间，值得被铭记</p>
-    <div class="container">
-        {make_special_moments_card()}
-        {make_section_summary('moments')}
     </div>
 </section>
 
@@ -7078,6 +6906,71 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
     </div>
 </section>
 
+<!-- 年度聊天颜色 -->
+<section class="section" id="chat-colors">
+    <h2 class="section-title">🎨 年度聊天色彩</h2>
+    <p class="section-subtitle">每一种颜色，都是一段独特的心情</p>
+    <div class="container">
+        {make_chat_colors()}
+        {make_section_summary('colors')}
+    </div>
+</section>
+
+<!-- 节日聊天分析 -->
+<section class="section" id="festival" style="background:var(--bg2)">
+    <h2 class="section-title">🎉 节日聊天图鉴</h2>
+    <p class="section-subtitle">那些特殊日子里，你和谁在一起（聊天）</p>
+    <div class="container">
+        {make_festival_analysis()}
+    </div>
+</section>
+
+<!-- 社交动机分析 -->
+<section class="section" id="motivation">
+    <h2 class="section-title">🎯 你的社交动机</h2>
+    <p class="section-subtitle">是什么驱动你打开微信？</p>
+    <div class="container">
+        {make_motivation_analysis()}
+    </div>
+</section>
+
+<!-- 表情气质分析 -->
+<section class="section" id="emoji-analysis" style="background:var(--bg2)">
+    <h2 class="section-title">😊 你的表情气质</h2>
+    <p class="section-subtitle">表情是文字之外的第二语言</p>
+    <div class="container">
+        {make_emoji_analysis()}
+    </div>
+</section>
+
+<!-- 24小时聊天节奏 -->
+<section class="section" id="rhythm" style="background:var(--bg2)">
+    <h2 class="section-title">🕐 你的社交节奏</h2>
+    <p class="section-subtitle">每个时段的消息，都是你生活韵律的一部分</p>
+    <div class="container">
+        {make_hourly_rhythm()}
+        {make_section_summary('rhythm')}
+    </div>
+</section>
+
+<!-- 聊天能量波动 -->
+<section class="section" id="energy">
+    <h2 class="section-title">📈 你的社交能量</h2>
+    <p class="section-subtitle">52周的聊天能量，起伏就是生活的节奏</p>
+    <div class="container">
+        {make_energy_wave()}
+    </div>
+</section>
+
+<!-- 用户画像预测 -->
+<section class="section" id="user-profile" style="background:var(--bg2)">
+    <h2 class="section-title">🔮 猜猜你是谁</h2>
+    <p class="section-subtitle">文字里藏着你的生活轨迹</p>
+    <div class="container">
+        {make_user_profile_card()}
+    </div>
+</section>
+
 <!-- 年度好友荣誉榜 -->
 <section class="section" id="honors">
     <h2 class="section-title">🏅 年度好友荣誉榜</h2>
@@ -7162,6 +7055,7 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
         </button>
     </div>
 </section>
+
 
 <!-- 页脚 - 放在最后 -->
 <footer>
@@ -8369,113 +8263,358 @@ function createHeroParticles() {{
     const emojis = data.emojis || ['😂', '🥰', '👍', '❤️'];
     const monthly = data.monthly || [];
     const stats = data.stats || {{}};
+    const peakMonth = data.peakMonth || 0;
     
     let phase = 0;
-    const totalDuration = 11000; // 总时长11秒
+    const totalDuration = 30000; // 总时长30秒
     
-    // 阶段1：消息粒子飞入（0-2s）
+    // 阶段1：大量消息粒子飞入（0-5s）
     function phase1_particles() {{
         layer.innerHTML = '<div class="intro-narrative"><div class="intro-narrative-text" style="animation-delay:0s">这一年，你发出的每一条消息...</div></div>';
         
-        // 创建大量飞入的消息粒子
-        for (let i = 0; i < 60; i++) {{
+        // 创建海量飞入的消息粒子 - 至少半屏
+        for (let i = 0; i < 300; i++) {{
             setTimeout(() => {{
                 const particle = document.createElement('div');
                 particle.className = 'intro-text-particle';
                 particle.textContent = snippets[Math.floor(Math.random() * snippets.length)];
                 particle.style.left = Math.random() * 100 + '%';
                 particle.style.bottom = '-50px';
-                particle.style.animationDuration = (2 + Math.random()) + 's';
-                particle.style.fontSize = (10 + Math.random() * 8) + 'px';
-                particle.style.color = ['rgba(255,107,157,0.9)', 'rgba(78,205,196,0.9)', 'rgba(167,139,250,0.9)'][Math.floor(Math.random() * 3)];
+                particle.style.animationDuration = (2.5 + Math.random() * 2) + 's';
+                particle.style.fontSize = (12 + Math.random() * 14) + 'px';
+                particle.style.color = ['rgba(255,107,157,0.95)', 'rgba(78,205,196,0.95)', 'rgba(167,139,250,0.95)', 'rgba(255,215,0,0.9)'][Math.floor(Math.random() * 4)];
+                particle.style.textShadow = '0 0 10px currentColor';
                 layer.appendChild(particle);
                 
-                setTimeout(() => particle.remove(), 3500);
-            }}, i * 30);
+                setTimeout(() => particle.remove(), 5000);
+            }}, i * 15); // 更密集的间隔
         }}
     }}
     
-    // 阶段2：聊天内容高速扫过（2-5s）
+    // 阶段2：海量聊天内容高速扫过（5-10s）
     function phase2_textStream() {{
         layer.innerHTML = '<div class="intro-narrative"><div class="intro-narrative-text">都汇成了流动的记忆...</div></div>';
         
-        // 高速文字流
+        // 高速文字流容器
         const streamContainer = document.createElement('div');
         streamContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden';
         layer.appendChild(streamContainer);
-        
-        for (let i = 0; i < 40; i++) {{
-            setTimeout(() => {{
-                const text = document.createElement('div');
-                const content = [...snippets, ...emojis][Math.floor(Math.random() * (snippets.length + emojis.length))];
-                text.textContent = content;
-                text.style.cssText = `
-                    position:absolute;
-                    top:${{10 + Math.random() * 80}}%;
-                    left:${{Math.random() > 0.5 ? '-200px' : '100%'}};
-                    font-size:${{14 + Math.random() * 16}}px;
-                    color:rgba(255,255,255,${{0.4 + Math.random() * 0.5}});
-                    white-space:nowrap;
-                    animation:stream-across ${{1.5 + Math.random()}}s linear forwards;
-                    text-shadow:0 0 15px rgba(255,107,157,0.6);
-                `;
-                streamContainer.appendChild(text);
-                setTimeout(() => text.remove(), 3000);
-            }}, i * 60);
-        }}
         
         // 添加流动动画的CSS
         if (!document.getElementById('streamStyle')) {{
             const style = document.createElement('style');
             style.id = 'streamStyle';
             style.textContent = `
-                @keyframes stream-across {{
-                    0% {{ transform: translateX(0); opacity: 0; }}
-                    10% {{ opacity: 1; }}
-                    90% {{ opacity: 1; }}
-                    100% {{ transform: translateX(${{Math.random() > 0.5 ? '' : '-'}}120vw); opacity: 0; }}
+                @keyframes stream-left {{
+                    0% {{ transform: translateX(100vw); opacity: 0; }}
+                    5% {{ opacity: 1; }}
+                    95% {{ opacity: 1; }}
+                    100% {{ transform: translateX(-100vw); opacity: 0; }}
+                }}
+                @keyframes stream-right {{
+                    0% {{ transform: translateX(-100vw); opacity: 0; }}
+                    5% {{ opacity: 1; }}
+                    95% {{ opacity: 1; }}
+                    100% {{ transform: translateX(100vw); opacity: 0; }}
                 }}
             `;
             document.head.appendChild(style);
         }}
+        
+        // 创建海量消息流 - 多行同时
+        for (let row = 0; row < 15; row++) {{
+            for (let i = 0; i < 12; i++) {{
+                setTimeout(() => {{
+                    const text = document.createElement('div');
+                    const content = [...snippets, ...emojis][Math.floor(Math.random() * (snippets.length + emojis.length))];
+                    const direction = row % 2 === 0 ? 'left' : 'right';
+                    const topPos = 5 + row * 6;
+                    text.textContent = content;
+                    text.style.cssText = `
+                        position:absolute;
+                        top:${{topPos}}%;
+                        left:0;
+                        font-size:${{16 + Math.random() * 20}}px;
+                        font-weight:${{Math.random() > 0.5 ? '600' : '400'}};
+                        color:rgba(255,255,255,${{0.5 + Math.random() * 0.5}});
+                        white-space:nowrap;
+                        animation:stream-${{direction}} ${{2.5 + Math.random() * 1.5}}s linear forwards;
+                        text-shadow:0 0 20px rgba(255,107,157,0.8);
+                    `;
+                    streamContainer.appendChild(text);
+                    setTimeout(() => text.remove(), 5000);
+                }}, row * 100 + i * 300);
+            }}
+        }}
     }}
     
-    // 阶段3：时间轴汇聚（5-8s）
-    function phase3_timeline() {{
+    // 阶段3：年度热力图展示（10-18s）- 加大尺寸
+    function phase3_heatmap() {{
         layer.innerHTML = `
-            <div class="intro-narrative"><div class="intro-narrative-text">12个月的时光，汇聚成时间线</div></div>
-            <div class="intro-timeline" id="introTimeline"></div>
+            <div class="intro-narrative"><div class="intro-narrative-text" style="font-size:28px">📅 2025 聊天年历</div></div>
+            <div class="intro-heatmap" id="introHeatmap"></div>
         `;
         
-        const timeline = document.getElementById('introTimeline');
+        const heatmap = document.getElementById('introHeatmap');
         const maxCount = Math.max(...monthly.map(m => m.count || 0)) || 1;
         
+        // 添加热力图样式 - 加大尺寸
+        if (!document.getElementById('heatmapIntroStyle')) {{
+            const style = document.createElement('style');
+            style.id = 'heatmapIntroStyle';
+            style.textContent = `
+                .intro-heatmap {{
+                    position: absolute;
+                    top: 55%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    display: flex;
+                    gap: 12px;
+                    padding: 40px 50px;
+                    background: rgba(0,0,0,0.4);
+                    border-radius: 24px;
+                    backdrop-filter: blur(15px);
+                    border: 1px solid rgba(255,255,255,0.1);
+                }}
+                .intro-heatmap-month {{
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 12px;
+                    opacity: 0;
+                    transform: translateY(30px);
+                    transition: all 0.6s ease-out;
+                }}
+                .intro-heatmap-month.show {{
+                    opacity: 1;
+                    transform: translateY(0);
+                }}
+                .intro-heatmap-bar {{
+                    width: 40px;
+                    background: linear-gradient(to top, var(--pink), var(--cyan));
+                    border-radius: 6px;
+                    transition: height 1s ease-out;
+                    min-height: 8px;
+                }}
+                .intro-heatmap-label {{
+                    font-size: 14px;
+                    color: var(--dim);
+                    font-weight: 500;
+                }}
+                .intro-heatmap-count {{
+                    font-size: 13px;
+                    color: var(--txt);
+                    font-weight: 600;
+                    opacity: 0;
+                    transition: opacity 0.5s;
+                }}
+                .intro-heatmap-month.show .intro-heatmap-count {{
+                    opacity: 1;
+                }}
+                .intro-heatmap-month.peak .intro-heatmap-bar {{
+                    background: linear-gradient(to top, #ff6b9d, #ffd700);
+                    box-shadow: 0 0 25px rgba(255,215,0,0.6);
+                }}
+                .intro-heatmap-month.peak .intro-heatmap-count {{
+                    color: #ffd700;
+                }}
+                @media (max-width: 768px) {{
+                    .intro-heatmap {{
+                        gap: 6px;
+                        padding: 25px 20px;
+                    }}
+                    .intro-heatmap-bar {{
+                        width: 22px;
+                    }}
+                    .intro-heatmap-label {{
+                        font-size: 11px;
+                    }}
+                    .intro-heatmap-count {{
+                        font-size: 10px;
+                    }}
+                }}
+            `;
+            document.head.appendChild(style);
+        }}
+        
         setTimeout(() => {{
-            timeline.style.opacity = '1';
-            timeline.style.transition = 'opacity 0.5s';
+            heatmap.style.opacity = '1';
         }}, 300);
         
         monthly.forEach((m, i) => {{
             setTimeout(() => {{
                 const month = document.createElement('div');
-                month.className = 'intro-month';
-                const height = Math.max(10, (m.count / maxCount) * 80);
+                month.className = 'intro-heatmap-month' + (i === peakMonth ? ' peak' : '');
+                const height = Math.max(30, (m.count / maxCount) * 200);
                 month.innerHTML = `
-                    <div class="intro-month-bar" style="height:0px" data-height="${{height}}"></div>
-                    <div class="intro-month-label">${{m.month}}月</div>
+                    <div class="intro-heatmap-count">${{m.count > 1000 ? (m.count/1000).toFixed(1)+'k' : m.count}}</div>
+                    <div class="intro-heatmap-bar" style="height:0px" data-height="${{height}}"></div>
+                    <div class="intro-heatmap-label">${{m.month}}月</div>
                 `;
-                timeline.appendChild(month);
+                heatmap.appendChild(month);
                 
-                // 动画增长
                 setTimeout(() => {{
-                    month.querySelector('.intro-month-bar').style.height = height + 'px';
-                }}, 50);
-            }}, i * 100);
+                    month.classList.add('show');
+                    month.querySelector('.intro-heatmap-bar').style.height = height + 'px';
+                }}, 150);
+            }}, i * 250);
         }});
     }}
     
-    // 阶段4：统计数据爆发（8-10s）
-    function phase4_stats() {{
+    // 阶段4：年度旅程 - 垂直时间线样式（18-26s）
+    function phase4_journey() {{
+        layer.innerHTML = `
+            <div class="intro-narrative"><div class="intro-narrative-text" style="font-size:28px">🚀 你的年度旅程</div></div>
+            <div class="intro-journey-timeline" id="introJourney"></div>
+        `;
+        
+        const journey = document.getElementById('introJourney');
+        
+        // 添加时间线样式
+        if (!document.getElementById('journeyIntroStyle')) {{
+            const style = document.createElement('style');
+            style.id = 'journeyIntroStyle';
+            style.textContent = `
+                .intro-journey-timeline {{
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    display: flex;
+                    flex-direction: column;
+                    max-height: 70vh;
+                    overflow: hidden;
+                    padding: 20px 40px;
+                }}
+                .intro-journey-timeline::before {{
+                    content: '';
+                    position: absolute;
+                    left: 50%;
+                    top: 0;
+                    bottom: 0;
+                    width: 3px;
+                    background: linear-gradient(to bottom, var(--pink), var(--cyan), var(--pink));
+                    transform: translateX(-50%);
+                    opacity: 0.5;
+                }}
+                .intro-timeline-item {{
+                    display: flex;
+                    align-items: center;
+                    gap: 20px;
+                    padding: 8px 0;
+                    opacity: 0;
+                    transition: all 0.5s ease-out;
+                }}
+                .intro-timeline-item.show {{
+                    opacity: 1;
+                }}
+                .intro-timeline-item:nth-child(odd) {{
+                    flex-direction: row;
+                    transform: translateX(-30px);
+                }}
+                .intro-timeline-item:nth-child(even) {{
+                    flex-direction: row-reverse;
+                    transform: translateX(30px);
+                }}
+                .intro-timeline-item.show:nth-child(odd),
+                .intro-timeline-item.show:nth-child(even) {{
+                    transform: translateX(0);
+                }}
+                .intro-timeline-dot {{
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 50%;
+                    background: var(--cyan);
+                    border: 3px solid var(--bg);
+                    box-shadow: 0 0 15px var(--cyan);
+                    flex-shrink: 0;
+                    z-index: 1;
+                }}
+                .intro-timeline-item.peak .intro-timeline-dot {{
+                    background: #ffd700;
+                    box-shadow: 0 0 20px #ffd700;
+                    width: 20px;
+                    height: 20px;
+                }}
+                .intro-timeline-content {{
+                    background: rgba(255,255,255,0.05);
+                    padding: 12px 18px;
+                    border-radius: 12px;
+                    backdrop-filter: blur(10px);
+                    min-width: 180px;
+                    border: 1px solid rgba(255,255,255,0.1);
+                }}
+                .intro-timeline-item.peak .intro-timeline-content {{
+                    background: rgba(255,215,0,0.1);
+                    border-color: rgba(255,215,0,0.3);
+                }}
+                .intro-timeline-header {{
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin-bottom: 6px;
+                }}
+                .intro-timeline-icon {{
+                    font-size: 22px;
+                }}
+                .intro-timeline-name {{
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: var(--txt);
+                }}
+                .intro-timeline-stats {{
+                    font-size: 12px;
+                    color: var(--dim);
+                }}
+                .intro-timeline-stats span {{
+                    color: var(--cyan);
+                    font-weight: 600;
+                }}
+                .intro-timeline-item.peak .intro-timeline-stats span {{
+                    color: #ffd700;
+                }}
+                @media (max-width: 768px) {{
+                    .intro-journey-timeline {{
+                        padding: 15px 20px;
+                    }}
+                    .intro-timeline-content {{
+                        min-width: 130px;
+                        padding: 10px 14px;
+                    }}
+                    .intro-timeline-icon {{
+                        font-size: 18px;
+                    }}
+                    .intro-timeline-name {{
+                        font-size: 13px;
+                    }}
+                }}
+            `;
+            document.head.appendChild(style);
+        }}
+        
+        monthly.forEach((m, i) => {{
+            setTimeout(() => {{
+                const item = document.createElement('div');
+                item.className = 'intro-timeline-item' + (i === peakMonth ? ' peak' : '');
+                item.innerHTML = `
+                    <div class="intro-timeline-content">
+                        <div class="intro-timeline-header">
+                            <span class="intro-timeline-icon">${{m.icon}}</span>
+                            <span class="intro-timeline-name">${{m.name}}</span>
+                        </div>
+                        <div class="intro-timeline-stats"><span>${{m.count.toLocaleString()}}</span>条消息 · ${{m.friends}}人</div>
+                    </div>
+                    <div class="intro-timeline-dot"></div>
+                `;
+                journey.appendChild(item);
+                
+                setTimeout(() => item.classList.add('show'), 50);
+            }}, i * 350);
+        }});
+    }}
+    
+    // 阶段5：统计数据爆发（26-29s）
+    function phase5_stats() {{
         const statItems = [
             {{ value: stats.totalMsgs || 0, label: '条消息' }},
             {{ value: stats.lateNight || 0, label: '个深夜陪伴' }},
@@ -8487,12 +8626,12 @@ function createHeroParticles() {{
         statItems.forEach((item, i) => {{
             setTimeout(() => {{
                 layer.innerHTML = `
-                    <div class="intro-stat-burst" style="opacity:1;animation:stat-burst 0.8s ease-out">
+                    <div class="intro-stat-burst" style="opacity:1;animation:stat-burst 1s ease-out">
                         <div class="intro-stat-num">${{item.value.toLocaleString()}}</div>
                         <div class="intro-stat-label">${{item.label}}</div>
                     </div>
                 `;
-            }}, i * 600);
+            }}, i * 800);
         }});
         
         // 添加爆发动画CSS
@@ -8510,12 +8649,12 @@ function createHeroParticles() {{
         }}
     }}
     
-    // 阶段5：标题显现（10-11s）
-    function phase5_reveal() {{
+    // 阶段6：标题显现（29-30s）
+    function phase6_reveal() {{
         layer.innerHTML = `
-            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;animation:final-reveal 1s ease-out">
-                <div style="font-size:clamp(40px,10vw,80px);font-weight:900;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px">2025</div>
-                <div style="font-size:18px;color:var(--dim)">年度微信聊天报告</div>
+            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;animation:final-reveal 1.2s ease-out">
+                <div style="font-size:clamp(50px,12vw,100px);font-weight:900;background:linear-gradient(135deg,var(--pink),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:15px">2025</div>
+                <div style="font-size:22px;color:var(--dim)">年度微信聊天报告</div>
             </div>
         `;
         
@@ -8531,24 +8670,26 @@ function createHeroParticles() {{
             document.head.appendChild(style);
         }}
         
-        // 1秒后淡出动画层，显示真正内容
+        // 1.5秒后淡出动画层，显示真正内容
         setTimeout(() => {{
-            layer.style.transition = 'opacity 0.8s';
+            layer.style.transition = 'opacity 1s';
             layer.style.opacity = '0';
+            heroContent.style.transition = 'opacity 1s';
             heroContent.style.opacity = '1';
             
             setTimeout(() => {{
                 layer.classList.add('hidden');
-            }}, 800);
-        }}, 1000);
+            }}, 1000);
+        }}, 1500);
     }}
     
-    // 执行各阶段
+    // 执行各阶段（减慢速度）
     phase1_particles();
-    setTimeout(phase2_textStream, 2000);
-    setTimeout(phase3_timeline, 5000);
-    setTimeout(phase4_stats, 8000);
-    setTimeout(phase5_reveal, 10000);
+    setTimeout(phase2_textStream, 5000);
+    setTimeout(phase3_heatmap, 10000);
+    setTimeout(phase4_journey, 18000);
+    setTimeout(phase5_stats, 26000);
+    setTimeout(phase6_reveal, 29000);
 }}
 
 // ========== 打字机效果 ==========
@@ -8600,7 +8741,7 @@ document.addEventListener('DOMContentLoaded',()=>{{
     updateNav();
     initDraggable();
     // typeWriter在开场动画结束后启动（11秒后）
-    setTimeout(typeWriter, 11000);
+    setTimeout(typeWriter, 31000);
     initChemistryAnimation();  // 默契度自动动画
     initEndingCelebration();  // 结尾庆祝效果
     // 默认展开前3个
