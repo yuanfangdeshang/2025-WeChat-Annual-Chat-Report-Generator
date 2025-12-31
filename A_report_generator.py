@@ -2232,16 +2232,16 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
         max_period = max(p[1] for p in periods) or 1
         for name, count, time_range, desc in periods:
             pct = int(count / max_period * 100)
-            is_peak = '👑' if name == peak_period[0] else ''
+            is_peak = '👑 ' if name == peak_period[0] else ''
             period_html += f'''
             <div class="rhythm-period">
                 <div class="rhythm-period-header">
                     <span class="rhythm-period-name">{is_peak}{name}</span>
-                    <span class="rhythm-period-time">{time_range}</span>
-                </div>
-                <div class="rhythm-period-bar">
-                    <div class="rhythm-period-fill" style="width:{pct}%"></div>
                     <span class="rhythm-period-count">{count:,}条</span>
+                </div>
+                <div class="rhythm-period-meta">
+                    <span class="rhythm-period-time">{time_range}</span>
+                    <span class="rhythm-period-pct">{pct}%</span>
                 </div>
                 <div class="rhythm-period-desc">{desc}</div>
             </div>'''
@@ -5112,25 +5112,26 @@ def generate_final_report(results, output_path, my_name=None, bgm_path=None, mas
                 <span class="profile-title">猜猜你是谁</span>
             </div>
             <div class="profile-content">
-                <div class="profile-section">
-                    <div class="profile-label">年龄段预测</div>
-                    <div class="profile-value">{profile['age_range']}</div>
-                    <div class="profile-confidence">
-                        <div class="confidence-bar">
-                            <div class="confidence-fill" style="width:{profile['age_confidence']}%"></div>
+                <div class="profile-row">
+                    <div class="profile-section profile-half">
+                        <div class="profile-label">年龄段预测</div>
+                        <div class="profile-value">{profile['age_range']}</div>
+                        <div class="profile-confidence">
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" style="width:{profile['age_confidence']}%"></div>
+                            </div>
+                            <span class="confidence-text">置信度 {profile['age_confidence']}%</span>
                         </div>
-                        <span class="confidence-text">置信度 {profile['age_confidence']}%</span>
                     </div>
-                </div>
-                
-                <div class="profile-section">
-                    <div class="profile-label">身份猜测</div>
-                    <div class="profile-value">{profile['identity']}</div>
-                    <div class="profile-confidence">
-                        <div class="confidence-bar">
-                            <div class="confidence-fill" style="width:{profile['identity_confidence']}%"></div>
+                    <div class="profile-section profile-half">
+                        <div class="profile-label">身份猜测</div>
+                        <div class="profile-value">{profile['identity']}</div>
+                        <div class="profile-confidence">
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" style="width:{profile['identity_confidence']}%"></div>
+                            </div>
+                            <span class="confidence-text">置信度 {profile['identity_confidence']}%</span>
                         </div>
-                        <span class="confidence-text">置信度 {profile['identity_confidence']}%</span>
                     </div>
                 </div>
                 
@@ -5634,8 +5635,8 @@ body{{
 @keyframes pulse{{0%,100%{{transform:scale(1)}}50%{{transform:scale(1.05)}}}}
 
 /* 导航 - 改进移动端 */
-.nav{{position:fixed;top:0;left:0;right:0;background:rgba(26,10,20,0.95);backdrop-filter:blur(10px);z-index:100;padding:8px 15px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap}}
-.nav a{{color:var(--dim);text-decoration:none;padding:6px 12px;border-radius:20px;font-size:12px;transition:all 0.3s;white-space:nowrap}}
+.nav{{position:fixed;top:50%;right:0;transform:translateY(-50%);background:rgba(26,10,20,0.9);backdrop-filter:blur(10px);z-index:100;padding:10px 6px;display:flex;flex-direction:column;gap:4px;border-radius:12px 0 0 12px;box-shadow:-2px 0 20px rgba(0,0,0,0.3)}}
+.nav a{{color:var(--dim);text-decoration:none;padding:8px 10px;border-radius:8px;font-size:11px;transition:all 0.3s;white-space:nowrap;text-align:center}}
 .nav a:hover,.nav a.active{{background:var(--pink);color:#fff}}
 
 /* 开场页 */
@@ -5686,13 +5687,31 @@ body{{
 @keyframes story-line-in{{0%{{opacity:0;transform:translateX(-50px);border-left-color:transparent}}50%{{border-left-color:var(--pink)}}100%{{opacity:1;transform:translateX(0)}}}}
 .story-line strong{{color:var(--cyan);font-weight:600}}
 .hero-quote{{font-size:clamp(11px,2vw,13px);color:var(--dim);font-style:italic;margin:20px 0;opacity:0.7;animation:fadeIn 1s ease-out 2s both}}
-.hero-stats{{display:flex;gap:clamp(15px,4vw,50px);flex-wrap:wrap;justify-content:center}}
-.hero-stat{{text-align:center;animation:stat-pop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;opacity:0;transform:scale(0.3) translateY(20px)}}
-.hero-stat:nth-child(1){{animation-delay:2.2s}}.hero-stat:nth-child(2){{animation-delay:2.4s}}.hero-stat:nth-child(3){{animation-delay:2.6s}}.hero-stat:nth-child(4){{animation-delay:2.8s}}.hero-stat:nth-child(5){{animation-delay:3s}}
-@keyframes stat-pop{{0%{{opacity:0;transform:scale(0.3) translateY(20px)}}60%{{opacity:1;transform:scale(1.15) translateY(-5px)}}80%{{transform:scale(0.95) translateY(0)}}100%{{opacity:1;transform:scale(1) translateY(0)}}}}
-.hero-stat-val{{font-size:clamp(28px,7vw,52px);font-weight:800;background:linear-gradient(135deg,var(--cyan),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;transition:transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)}}
-.hero-stat:hover .hero-stat-val{{transform:scale(1.1)}}
-.hero-stat-lbl{{font-size:12px;color:var(--dim);margin-top:5px}}
+.hero-stats{{display:flex;gap:clamp(15px,4vw,40px);flex-wrap:wrap;justify-content:center;padding:30px 10px}}
+.hero-stat{{text-align:center;opacity:0;transform:translateY(40px) scale(0.8);animation:stat-float-in 0.8s cubic-bezier(0.34,1.56,0.64,1) forwards;position:relative;padding:20px 25px;border-radius:20px;background:linear-gradient(145deg,rgba(15,20,40,0.9),rgba(25,35,60,0.8));border:1px solid rgba(0,212,255,0.2);backdrop-filter:blur(15px);min-width:100px;transition:all 0.4s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 4px 20px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.1)}}
+.hero-stat:nth-child(1){{animation-delay:0.2s}}
+.hero-stat:nth-child(2){{animation-delay:0.35s}}
+.hero-stat:nth-child(3){{animation-delay:0.5s}}
+.hero-stat:nth-child(4){{animation-delay:0.65s}}
+.hero-stat:nth-child(5){{animation-delay:0.8s}}
+@keyframes stat-float-in{{0%{{opacity:0;transform:translateY(40px) scale(0.8)}}100%{{opacity:1;transform:translateY(0) scale(1)}}}}
+.hero-stat:hover{{transform:translateY(-8px) scale(1.05);border-color:rgba(0,212,255,0.5);box-shadow:0 15px 40px rgba(0,212,255,0.25),0 0 30px rgba(0,212,255,0.15),inset 0 1px 0 rgba(255,255,255,0.2)}}
+.hero-stat::before{{content:'';position:absolute;top:0;left:0;right:0;bottom:0;border-radius:20px;padding:1px;background:linear-gradient(135deg,rgba(0,212,255,0.4),transparent 50%,rgba(255,107,157,0.4));-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}}
+.hero-stat::after{{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle,rgba(0,212,255,0.1) 0%,transparent 70%);opacity:0;transition:opacity 0.4s;pointer-events:none}}
+.hero-stat:hover::after{{opacity:1}}
+.hero-stat-icon{{font-size:28px;margin-bottom:10px;display:block;filter:drop-shadow(0 0 8px rgba(0,212,255,0.5));animation:icon-pulse 2s ease-in-out infinite}}
+@keyframes icon-pulse{{0%,100%{{transform:scale(1);filter:drop-shadow(0 0 8px rgba(0,212,255,0.5))}}50%{{transform:scale(1.1);filter:drop-shadow(0 0 15px rgba(0,212,255,0.8))}}}}
+.hero-stat:nth-child(1) .hero-stat-icon{{animation-delay:0s}}
+.hero-stat:nth-child(2) .hero-stat-icon{{animation-delay:0.2s}}
+.hero-stat:nth-child(3) .hero-stat-icon{{animation-delay:0.4s}}
+.hero-stat:nth-child(4) .hero-stat-icon{{animation-delay:0.6s}}
+.hero-stat:nth-child(5) .hero-stat-icon{{animation-delay:0.8s}}
+.hero-stat-val{{font-size:clamp(36px,9vw,60px);font-weight:800;background:linear-gradient(135deg,#00d4ff 0%,#00ff88 25%,#ffdd00 50%,#ff6b9d 75%,#00d4ff 100%);background-size:300% 300%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:rainbow-shift 4s ease infinite;transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);line-height:1.1;position:relative}}
+@keyframes rainbow-shift{{0%{{background-position:0% 50%}}50%{{background-position:100% 50%}}100%{{background-position:0% 50%}}}}
+.hero-stat:hover .hero-stat-val{{transform:scale(1.15)}}
+.hero-stat-lbl{{font-size:13px;color:rgba(255,255,255,0.7);margin-top:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;position:relative}}
+.hero-stat-lbl::after{{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--pink));transition:width 0.3s ease;border-radius:2px}}
+.hero-stat:hover .hero-stat-lbl::after{{width:80%}}
 .scroll-hint{{position:absolute;bottom:30px;color:var(--dim);font-size:13px;animation:bounce 2s infinite 4s}}
 
 /* 打字机效果 */
@@ -5800,7 +5819,7 @@ body{{
     border-radius:16px;
     border:2px solid rgba(255,107,157,0.3);
     box-shadow:0 10px 40px rgba(0,0,0,0.3);
-    transition:all 1.2s cubic-bezier(0.4, 0, 0.2, 1) 1.8s, box-shadow 0.5s ease;
+    transition:all 1.5s cubic-bezier(0.4, 0, 0.2, 1) 2.5s, box-shadow 0.5s ease;
 }}
 .envelope:hover:not(.opened) .envelope-back{{
     box-shadow:0 15px 50px rgba(255,107,157,0.2);
@@ -5817,7 +5836,7 @@ body{{
     background:linear-gradient(180deg,var(--pink),var(--purple));
     clip-path:polygon(0 0, 50% 100%, 100% 0);
     transform-origin:top center;
-    transition:transform 2.5s cubic-bezier(0.68, -0.3, 0.32, 1.3), filter 0.3s ease;
+    transition:transform 3.5s cubic-bezier(0.68, -0.3, 0.32, 1.3), filter 0.3s ease;
     z-index:10;
     border-radius:16px 16px 0 0;
 }}
@@ -5842,7 +5861,7 @@ body{{
     font-size:24px;
     z-index:15;
     box-shadow:0 4px 15px rgba(255,107,157,0.4);
-    transition:all 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:all 1.8s cubic-bezier(0.4, 0, 0.2, 1);
     animation:seal-pulse 2s ease-in-out infinite;
 }}
 @keyframes seal-pulse{{
@@ -5884,7 +5903,7 @@ body{{
     transform:translateY(-30px) scale(0.95);
     max-height:0;
     overflow:hidden;
-    transition:opacity 1.2s ease 2s, transform 1.2s cubic-bezier(0.4, 0, 0.2, 1) 2s, max-height 2s cubic-bezier(0.4, 0, 0.2, 1) 1.8s, padding 1s ease 1.8s;
+    transition:opacity 1.5s ease 3s, transform 1.5s cubic-bezier(0.4, 0, 0.2, 1) 3s, max-height 2.5s cubic-bezier(0.4, 0, 0.2, 1) 2.5s, padding 1.2s ease 2.5s;
 }}
 .envelope.opened .letter-paper{{
     opacity:1;
@@ -5968,25 +5987,26 @@ body{{
 .rhythm-title{{font-size:20px;font-weight:600;color:var(--txt);margin-bottom:8px}}
 .rhythm-subtitle{{font-size:13px;color:var(--dim)}}
 .rhythm-main{{display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap;justify-content:center}}
-.rhythm-visual{{position:relative;width:200px;height:200px;flex-shrink:0}}
-.rhythm-ring{{position:relative;width:100%;height:100%;border-radius:50%;background:var(--bg2)}}
-.rhythm-hour{{position:absolute;width:24px;height:24px;left:50%;top:50%;transform-origin:0 0;transform:rotate(var(--angle)) translateX(75px) rotate(calc(-1 * var(--angle)));background:var(--color);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--bg);font-weight:600;transition:transform 0.3s,box-shadow 0.3s;cursor:pointer}}
-.rhythm-hour:hover{{transform:rotate(var(--angle)) translateX(75px) rotate(calc(-1 * var(--angle))) scale(1.3);box-shadow:0 0 15px var(--color);z-index:10}}
+.rhythm-visual{{position:relative;width:220px;height:220px;flex-shrink:0}}
+.rhythm-ring{{position:relative;width:220px;height:220px;border-radius:50%;background:var(--bg2)}}
+.rhythm-hour{{position:absolute;width:22px;height:22px;margin-left:-11px;margin-top:-11px;left:50%;top:50%;transform:rotate(var(--angle)) translateY(-85px) rotate(calc(-1 * var(--angle)));background:var(--color);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--bg);font-weight:600;transition:transform 0.3s,box-shadow 0.3s;cursor:pointer}}
+.rhythm-hour:hover{{transform:rotate(var(--angle)) translateY(-85px) rotate(calc(-1 * var(--angle))) scale(1.3);box-shadow:0 0 15px var(--color);z-index:10}}
 .rhythm-hour-label{{opacity:0.9}}
-.rhythm-ring-center{{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:90px;height:90px;background:var(--bg);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(0,0,0,0.3)}}
-.rhythm-peak{{text-align:center}}
-.rhythm-peak-label{{font-size:10px;color:var(--dim);margin-bottom:2px}}
-.rhythm-peak-value{{font-size:20px;font-weight:700;color:var(--pink);line-height:1.2}}
-.rhythm-peak-range{{font-size:9px;color:var(--dim);margin-top:2px}}
-.rhythm-periods{{flex:1;min-width:280px;display:flex;flex-direction:column;gap:15px}}
-.rhythm-period{{background:var(--bg2);border-radius:12px;padding:12px 15px}}
-.rhythm-period-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}}
-.rhythm-period-name{{font-size:14px;font-weight:500;color:var(--txt)}}
-.rhythm-period-time{{font-size:11px;color:var(--dim)}}
-.rhythm-period-bar{{height:8px;background:var(--bg3);border-radius:4px;position:relative;overflow:hidden}}
-.rhythm-period-fill{{height:100%;background:linear-gradient(90deg,var(--cyan),var(--purple));border-radius:4px;transition:width 1s ease-out}}
-.rhythm-period-count{{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--txt)}}
-.rhythm-period-desc{{font-size:11px;color:var(--dim);margin-top:6px}}
+.rhythm-ring-center{{position:absolute;top:55px;left:55px;width:110px;height:110px;background:var(--bg);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(0,0,0,0.3)}}
+.rhythm-peak{{text-align:center;padding:5px}}
+.rhythm-peak-label{{font-size:10px;color:var(--dim);margin-bottom:4px}}
+.rhythm-peak-value{{font-size:22px;font-weight:700;color:var(--pink);line-height:1.1}}
+.rhythm-peak-range{{font-size:9px;color:var(--dim);margin-top:4px}}
+.rhythm-periods{{flex:1;min-width:280px;display:flex;flex-direction:column;gap:12px}}
+.rhythm-period{{background:var(--bg2);border-radius:12px;padding:14px 16px;border:1px solid var(--bg3);transition:all 0.3s ease}}
+.rhythm-period:hover{{background:var(--bg3);transform:translateX(5px)}}
+.rhythm-period-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}}
+.rhythm-period-name{{font-size:15px;font-weight:600;color:var(--txt)}}
+.rhythm-period-count{{font-size:18px;font-weight:700;color:var(--cyan)}}
+.rhythm-period-meta{{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}}
+.rhythm-period-time{{font-size:12px;color:var(--dim)}}
+.rhythm-period-pct{{font-size:12px;color:var(--pink);font-weight:600}}
+.rhythm-period-desc{{font-size:11px;color:var(--dim);line-height:1.5}}
 .rhythm-insight{{background:linear-gradient(135deg,rgba(255,107,157,0.1),rgba(78,205,196,0.1));border-radius:12px;padding:15px 20px;margin-top:25px;display:flex;gap:12px;align-items:flex-start}}
 .rhythm-insight-icon{{font-size:20px}}
 .rhythm-insight-text{{font-size:13px;color:var(--txt);line-height:1.6}}
@@ -6044,6 +6064,8 @@ body{{
 .profile-icon{{font-size:26px}}
 .profile-title{{font-size:18px;font-weight:700;color:var(--txt)}}
 .profile-content{{padding:25px}}
+.profile-row{{display:flex;gap:20px;margin-bottom:22px}}
+.profile-half{{flex:1;margin-bottom:0}}
 .profile-section{{margin-bottom:22px}}
 .profile-section:last-child{{margin-bottom:0}}
 .profile-label{{font-size:12px;color:var(--dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px}}
@@ -6101,22 +6123,14 @@ body{{
     padding:20px;
     border:1px solid var(--bg3);
     opacity:0;
-    transform:translateX(-50px) scale(0.95);
-    animation:chemistry-reveal 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-    animation-play-state:paused;
-    transition:box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s ease;
+    transform:translateY(30px);
+    transition:opacity 0.8s ease-out, transform 0.8s ease-out, box-shadow 0.4s ease, border-color 0.3s ease;
 }}
-.chemistry-card:hover{{transform:translateX(8px) scale(1.02);box-shadow:0 10px 30px rgba(0,0,0,0.2)}}
+.chemistry-card.visible{{opacity:1;transform:translateY(0)}}
+.chemistry-card:hover{{transform:translateY(-5px);box-shadow:0 10px 30px rgba(0,0,0,0.2)}}
 .chemistry-card.glow-high{{box-shadow:0 0 20px rgba(255,107,157,0.3);border-color:rgba(255,107,157,0.3)}}
 .chemistry-card.glow-mid{{box-shadow:0 0 15px rgba(168,85,247,0.2);border-color:rgba(168,85,247,0.2)}}
-@keyframes chemistry-reveal{{
-    0%{{opacity:0;transform:translateX(-50px) scale(0.95)}}
-    60%{{transform:translateX(5px) scale(1.02)}}
-    100%{{opacity:1;transform:translateX(0) scale(1)}}
-}}
-.chemistry-card.animate{{
-    animation-play-state:running;
-}}
+.chemistry-card.visible:hover{{transform:translateY(-5px)}}
 .chemistry-rank{{font-size:24px;font-weight:800;color:var(--yellow);min-width:50px;text-align:center}}
 .chemistry-info{{flex:1}}
 .chemistry-name{{font-size:16px;font-weight:600;color:var(--txt);margin-bottom:4px}}
@@ -6158,11 +6172,15 @@ body{{
 }}
 
 /* 滚动淡入增强 */
-.scroll-reveal{{opacity:0;transform:translateY(30px);transition:opacity 0.8s ease-out, transform 0.8s ease-out}}
+.scroll-reveal{{opacity:0;transform:translateY(60px);transition:opacity 1s ease-out, transform 1s ease-out}}
 .scroll-reveal.revealed{{opacity:1;transform:translateY(0)}}
-.scroll-reveal.delay-1{{transition-delay:0.1s}}
-.scroll-reveal.delay-2{{transition-delay:0.2s}}
-.scroll-reveal.delay-3{{transition-delay:0.3s}}
+.scroll-reveal.delay-1{{transition-delay:0.15s}}
+.scroll-reveal.delay-2{{transition-delay:0.3s}}
+.scroll-reveal.delay-3{{transition-delay:0.45s}}
+
+/* Section下拉动画 */
+.section-animate{{opacity:0;transform:translateY(80px);transition:opacity 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)}}
+.section-animate.revealed{{opacity:1;transform:translateY(0)}}
 
 /* 容器 */
 .container{{max-width:1400px;margin:0 auto;padding:0 15px}}
@@ -6936,23 +6954,21 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 
 /* 响应式 */
 @media(max-width:768px){{
-    /* 导航栏 - 移动端优化，放到底部 */
+    /* 导航栏 - 移动端右侧竖排，更紧凑 */
     .nav{{
         position:fixed;
-        bottom:0;
-        top:auto;
-        left:0;
+        top:50%;
         right:0;
-        padding:8px 5px;
-        gap:3px;
-        justify-content:space-around;
-        border-top:1px solid rgba(255,107,157,0.2);
-        background:rgba(10,10,26,0.98);
+        transform:translateY(-50%);
+        padding:8px 4px;
+        gap:2px;
+        border-radius:10px 0 0 10px;
+        background:rgba(10,10,26,0.95);
     }}
-    .nav a{{padding:8px 8px;font-size:10px;border-radius:12px}}
+    .nav a{{padding:6px 8px;font-size:9px;border-radius:8px}}
     
-    /* 开场页留出底部导航空间 */
-    .hero{{padding-top:20px;padding-bottom:80px}}
+    /* 开场页 */
+    .hero{{padding-top:20px;padding-bottom:40px}}
     
     /* 首页数据布局 - 2+3排列，第一行更紧凑 */
     .hero-stats{{
@@ -7002,6 +7018,7 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
     
     /* 用户画像卡片 */
     .profile-card{{margin:20px 15px}}
+    .profile-row{{flex-direction:column;gap:15px}}
     .profile-value{{font-size:18px}}
     
     /* 年度来信 - 信封更长更大 */
@@ -7065,8 +7082,11 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
 @media(max-width:480px){{
     .nav a{{padding:6px 6px;font-size:9px}}
     .heatmap-grid{{grid-template-columns:repeat(3, 1fr);max-width:280px}}
-    .hero-stats{{gap:10px;max-width:280px}}
-    .hero-stat-val{{font-size:clamp(24px,6vw,40px)}}
+    .hero-stats{{gap:10px;max-width:340px;padding:20px 10px}}
+    .hero-stat{{padding:15px 12px;min-width:95px;border-radius:16px}}
+    .hero-stat-icon{{font-size:20px;margin-bottom:8px}}
+    .hero-stat-val{{font-size:clamp(24px,6vw,32px)}}
+    .hero-stat-lbl{{font-size:10px;letter-spacing:0.3px;margin-top:8px}}
 }}
 
 .empty{{text-align:center;color:var(--dim);padding:40px}}
@@ -7193,11 +7213,11 @@ footer{{text-align:center;padding:60px 20px;color:var(--dim);position:relative;z
         <div class="hero-intro">这一年，你用文字编织了多少故事？</div>
         <div class="hero-slogan" id="heroSlogan"></div>
         <div class="hero-stats">
-            <div class="hero-stat"><div class="hero-stat-val"><span class="num" data-val="{total_msgs}">{total_msgs:,}</span></div><div class="hero-stat-lbl">总消息</div></div>
-            <div class="hero-stat"><div class="hero-stat-val"><span class="num" data-val="{total_chars}">{total_chars:,}</span></div><div class="hero-stat-lbl">总字数</div></div>
-            <div class="hero-stat"><div class="hero-stat-val"><span class="num" data-val="{len(sorted_private)}">{len(sorted_private)}</span></div><div class="hero-stat-lbl">私聊联系人</div></div>
-            <div class="hero-stat"><div class="hero-stat-val"><span class="num" data-val="{len(sorted_groups)}">{len(sorted_groups)}</span></div><div class="hero-stat-lbl">群聊</div></div>
-            <div class="hero-stat"><div class="hero-stat-val"><span class="num" data-val="{p.get('total_sessions', 0)}">{p.get('total_sessions', 0):,}</span></div><div class="hero-stat-lbl">总会话</div></div>
+            <div class="hero-stat"><div class="hero-stat-icon">💬</div><div class="hero-stat-val"><span class="num" data-val="{total_msgs}">{total_msgs:,}</span></div><div class="hero-stat-lbl">总消息</div></div>
+            <div class="hero-stat"><div class="hero-stat-icon">✍️</div><div class="hero-stat-val"><span class="num" data-val="{total_chars}">{total_chars:,}</span></div><div class="hero-stat-lbl">总字数</div></div>
+            <div class="hero-stat"><div class="hero-stat-icon">👤</div><div class="hero-stat-val"><span class="num" data-val="{len(sorted_private)}">{len(sorted_private)}</span></div><div class="hero-stat-lbl">私聊好友</div></div>
+            <div class="hero-stat"><div class="hero-stat-icon">👥</div><div class="hero-stat-val"><span class="num" data-val="{len(sorted_groups)}">{len(sorted_groups)}</span></div><div class="hero-stat-lbl">群聊</div></div>
+            <div class="hero-stat"><div class="hero-stat-icon">📅</div><div class="hero-stat-val"><span class="num" data-val="{p.get('total_sessions', 0)}">{p.get('total_sessions', 0):,}</span></div><div class="hero-stat-lbl">活跃天数</div></div>
         </div>
         <div class="hero-quote">
             "你的消息列表，是一部未完的情感电影"
@@ -7782,55 +7802,29 @@ function downloadShareCard(){{
 
 // 数字滚动
 function animateNumbers(){{
-    const observer=new IntersectionObserver((entries)=>{{
-        entries.forEach(entry=>{{
-            if(entry.isIntersecting){{
-                const el=entry.target;
-                if(el.dataset.animated)return;
-                el.dataset.animated='1';
-                const target=parseFloat(el.dataset.val)||0;
-                const duration=1800;  // 延长动画时间
-                const start=performance.now();
+    document.querySelectorAll('.num').forEach((el, index)=>{{
+        if(el.dataset.animated)return;
+        el.dataset.animated='1';
+        const target=parseFloat(el.dataset.val)||0;
+        const duration=1200;
+        
+        // 延迟启动，依次显示
+        setTimeout(()=>{{
+            const start=performance.now();
+            function update(now){{
+                const progress=Math.min((now-start)/duration,1);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                const current = Math.floor(target*eased);
+                el.textContent=current.toLocaleString();
                 
-                // 添加开始动画的视觉效果
-                el.style.transform = 'scale(1.1)';
-                el.style.color = 'var(--cyan)';
-                
-                function easeOutExpo(x) {{
-                    return x === 1 ? 1 : 1 - Math.pow(2, -10 * x);
+                if(progress<1){{
+                    requestAnimationFrame(update);
+                }} else {{
+                    el.textContent=target.toLocaleString();
                 }}
-                
-                function update(now){{
-                    const progress=Math.min((now-start)/duration,1);
-                    const eased=easeOutExpo(progress);
-                    const current = Math.floor(target*eased);
-                    el.textContent=current.toLocaleString();
-                    
-                    // 数字变化时的微动效
-                    if(progress < 0.8) {{
-                        el.style.transform = `scale(${{1 + 0.1 * (1-progress)}})`;
-                    }} else {{
-                        el.style.transform = 'scale(1)';
-                    }}
-                    
-                    if(progress<1){{
-                        requestAnimationFrame(update);
-                    }} else {{
-                        el.textContent=target.toLocaleString();
-                        el.style.transform = 'scale(1)';
-                        el.style.color = '';
-                        // 完成时的弹跳效果
-                        el.style.animation = 'numComplete 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-                    }}
-                }}
-                requestAnimationFrame(update);
             }}
-        }});
-    }},{{threshold:0.2}});
-    document.querySelectorAll('.num').forEach((n, index)=>{{
-        n.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s ease';
-        // 延迟观察，避免同时触发
-        setTimeout(() => observer.observe(n), index * 50);
+            requestAnimationFrame(update);
+        }}, index * 100);
     }});
 }}
 
@@ -8168,11 +8162,31 @@ function animateText() {{
         revealObserver.observe(el);
     }});
     
+    // Section整体下拉动画 - 从年度聊天色彩开始的所有section
+    const sectionObserver = new IntersectionObserver((entries) => {{
+        entries.forEach(entry => {{
+            if (entry.isIntersecting) {{
+                entry.target.classList.add('revealed');
+                sectionObserver.unobserve(entry.target);
+            }}
+        }});
+    }}, {{threshold: 0.05, rootMargin: '0px 0px -50px 0px'}});
+    
+    // 为从chat-colors开始的section添加动画（找到chat-colors后的所有section）
+    let startAnimating = false;
+    document.querySelectorAll('.section').forEach(section => {{
+        if (section.id === 'chat-colors') startAnimating = true;
+        if (startAnimating) {{
+            section.classList.add('section-animate');
+            sectionObserver.observe(section);
+        }}
+    }});
+    
     // 进度条填充动画
     const barObserver = new IntersectionObserver((entries) => {{
         entries.forEach(entry => {{
             if (entry.isIntersecting) {{
-                entry.target.querySelectorAll('.rhythm-period-fill, .motivation-fill, .qb-fill').forEach(bar => {{
+                entry.target.querySelectorAll('.motivation-fill, .qb-fill').forEach(bar => {{
                     const width = bar.style.width;
                     bar.style.width = '0%';
                     setTimeout(() => {{ bar.style.width = width; }}, 100);
@@ -8181,7 +8195,7 @@ function animateText() {{
             }}
         }});
     }}, {{threshold: 0.3}});
-    document.querySelectorAll('.rhythm-periods, .motivation-bars, .quality-cards').forEach(el => {{
+    document.querySelectorAll('.motivation-bars, .quality-cards').forEach(el => {{
         barObserver.observe(el);
     }});
     
@@ -8195,12 +8209,12 @@ function animateText() {{
                     setTimeout(() => {{
                         card.classList.add('visible');
                         card.classList.add('animated');  // 触发环形进度条动画
-                    }}, index * 200);  // 每张卡片延迟200ms
+                    }}, index * 500);  // 每张卡片延迟500ms
                 }});
                 chemistryObserver.unobserve(entry.target);  // 只触发一次
             }}
         }});
-    }}, {{threshold: 0.2}});
+    }}, {{threshold: 0.1}});
     
     const chemistryList = document.querySelector('.chemistry-list');
     if (chemistryList) {{
@@ -9361,6 +9375,8 @@ function createHeroParticles() {{
             setTimeout(() => {{
                 heroContent.style.opacity = '1';
                 heroContent.style.transform = 'translateY(0)';
+                // 启动数字动画
+                animateNumbers();
             }}, 200);
             
             // 动画结束后隐藏layer
@@ -9421,7 +9437,7 @@ document.addEventListener('DOMContentLoaded',()=>{{
     createParticles();
     createHeroParticles();  // 数据驱动的叙事式开场动画
     randomFireworks();
-    animateNumbers();
+    // animateNumbers在phase5_slideUp中调用
     animateBars();
     animateText();
     updateNav();
