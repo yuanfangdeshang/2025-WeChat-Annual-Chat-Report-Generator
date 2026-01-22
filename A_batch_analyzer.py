@@ -126,7 +126,7 @@ def analyze_group(df, group_name, my_name=None):
         weekdays[m['time'].weekday()] += 1
     
     peak_hour = max(hours.keys(), key=lambda h: hours[h])
-    late_night = sum(hours.get(h, 0) for h in [23, 0, 1, 2, 3, 4])
+    late_night = sum(hours.get(h, 0) for h in [23, 0, 1, 2, 3, 4, 5])
     
     # 统计"我"的消息数
     my_msgs = 0
@@ -174,8 +174,14 @@ def analyze_group(df, group_name, my_name=None):
     }
 
 
-def analyze_group_json(filepath, my_name=None):
-    """分析群聊JSON文件"""
+def analyze_group_json(filepath, my_name=None, year_filter='2025'):
+    """分析群聊JSON文件
+    
+    Args:
+        filepath: JSON文件路径
+        my_name: 我的昵称
+        year_filter: 年份过滤，默认'2025'，设为None则不过滤
+    """
     with open(filepath, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
@@ -189,6 +195,7 @@ def analyze_group_json(filepath, my_name=None):
     
     # 解析消息
     parsed = []
+    parsed_all = []  # 全量数据用于月度趋势
     for m in messages:
         try:
             msg_type = m.get('type', '')
@@ -215,13 +222,19 @@ def analyze_group_json(filepath, my_name=None):
             if not sender:
                 continue
             
-            parsed.append({
+            msg_data = {
                 'time': dt,
                 'sender': sender,
                 'type': msg_type,
                 'content': content,
                 'is_send': is_send,
-            })
+            }
+            
+            parsed_all.append(msg_data)
+            
+            # 年份过滤
+            if year_filter is None or dt.strftime('%Y') == str(year_filter):
+                parsed.append(msg_data)
         except:
             continue
     
@@ -229,6 +242,7 @@ def analyze_group_json(filepath, my_name=None):
         return None
     
     parsed.sort(key=lambda x: x['time'])
+    parsed_all.sort(key=lambda x: x['time'])
     total = len(parsed)
     
     # 统计成员消息数
@@ -282,15 +296,15 @@ def analyze_group_json(filepath, my_name=None):
         hours[m['time'].hour] += 1
         weekdays[m['time'].weekday()] += 1
     
-    # 深夜消息 (0-6点)
-    late_night = sum(hours[h] for h in range(0, 7))
+    # 深夜消息 (23-5点，统一标准)
+    late_night = sum(hours[h] for h in [23, 0, 1, 2, 3, 4, 5])
     
     # 高峰时段
     peak_hour = max(hours.keys(), key=lambda h: hours[h]) if hours else 12
     
-    # 月度分布
+    # 月度分布（使用全量数据）
     monthly = defaultdict(int)
-    for m in parsed:
+    for m in parsed_all:
         monthly[m['time'].strftime('%Y-%m')] += 1
     
     # 话痨排行
@@ -319,6 +333,13 @@ def analyze_group_json(filepath, my_name=None):
 
 def analyze_private_excel(df, chat_name, my_name=None):
     """分析私聊Excel数据（包括点头之交：只有一方发消息）"""
+    from A_enhanced_chat_analyzer import (
+        MODAL_WORDS, DEEP_TOPICS, VOCAB_LEVELS,
+        _calc_message_length, _calc_language_style, _calc_emoji_stats,
+        _calc_time_pattern, _calc_response_time, _calc_content_richness,
+        _calc_deep_topics, _calc_conversation_structure, _calc_monthly_trends, _calc_care_invite
+    )
+    
     messages = []
     senders = set()
     
@@ -559,7 +580,7 @@ def analyze_private_excel(df, chat_name, my_name=None):
     peak_wd = max(weekdays.keys(), key=lambda w: weekdays[w])
     quiet_wd = min(weekdays.keys(), key=lambda w: weekdays[w])
     wd_names = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-    late_night = sum(hours.get(h, 0) for h in [23, 0, 1, 2, 3, 4])
+    late_night = sum(hours.get(h, 0) for h in [23, 0, 1, 2, 3, 4, 5])
     
     result['hours'] = hours
     result['weekdays'] = weekdays
@@ -760,7 +781,7 @@ def analyze_private_excel(df, chat_name, my_name=None):
     return result
 
 
-def batch_analyze(data_dir, my_name=None, analyze_excel=True, exclude_file_helper=True):
+def batch_analyze(data_dir, my_name=None, analyze_excel=True, exclude_file_helper=True, year_filter='2025'):
     """
     批量分析目录下所有数据文件
     JSON文件必须分析，Excel文件可选（analyze_excel参数控制）
@@ -771,6 +792,7 @@ def batch_analyze(data_dir, my_name=None, analyze_excel=True, exclude_file_helpe
         my_name: 我的微信昵称（用于识别自己）
         analyze_excel: 是否分析Excel文件（默认True，设为False可跳过以加快速度）
         exclude_file_helper: 是否剔除"文件传输助手"（默认True）
+        year_filter: 年份过滤，默认'2025'，设为None则不过滤
     
     Returns:
         dict: 包含所有分析结果的字典
@@ -819,7 +841,7 @@ def batch_analyze(data_dir, my_name=None, analyze_excel=True, exclude_file_helpe
             filepath = os.path.join(data_dir, f)
             try:
                 data = load_chat_json(filepath)
-                result = analyze_chat_full(data)
+                result = analyze_chat_full(data, year_filter=year_filter)
                 if result:
                     # 检查是否是"文件传输助手"
                     if exclude_file_helper and result['name'] == '文件传输助手':
@@ -850,7 +872,7 @@ def batch_analyze(data_dir, my_name=None, analyze_excel=True, exclude_file_helpe
         for i, f in enumerate(group_json_files, 1):
             filepath = os.path.join(data_dir, f)
             try:
-                result = analyze_group_json(filepath, my_name)
+                result = analyze_group_json(filepath, my_name, year_filter=year_filter)
                 if result:
                     # 去重
                     group_key = f"{result['name']}_{result['total_msgs']}"
@@ -960,6 +982,10 @@ def generate_summary(private_chats, group_chats):
     # 基础汇总
     total_private_msgs = sum(c['total_msgs'] for c in private_chats)
     total_private_chars = sum(c['total_chars'] for c in private_chats)
+    total_private_days = len(set(
+        d for c in private_chats 
+        for d in [c['date_range'][0], c['date_range'][1]] if d
+    ))
     total_sessions = sum(c['sessions'] for c in private_chats)
     
     # 排行榜生成函数
