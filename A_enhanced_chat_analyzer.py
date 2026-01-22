@@ -12,6 +12,36 @@ from collections import defaultdict, Counter
 from statistics import median, mean
 
 # ==================== 配置 ====================
+EMOJI_MAP = {
+    '微笑': '😊', '撇嘴': '😣', '色': '😍', '发呆': '😳', '得意': '😎',
+    '流泪': '😢', '害羞': '😊', '闭嘴': '🤐', '睡': '😴', '大哭': '😭',
+    '尴尬': '😅', '发怒': '😠', '调皮': '😜', '呲牙': '😁', '惊讶': '😮',
+    '难过': '😞', '酷': '😎', '冷汗': '😰', '抓狂': '😫', '吐': '🤮',
+    '偷笑': '🤭', '可爱': '🥰', '白眼': '🙄', '傲慢': '😤', '饥饿': '😋',
+    '困': '😪', '惊恐': '😱', '流汗': '😓', '憨笑': '😄', '大兵': '🎖️',
+    '奋斗': '💪', '咒骂': '🤬', '疑问': '❓', '嘘': '🤫', '晕': '😵',
+    '折磨': '😩', '衰': '😵', '骷髅': '💀', '敲打': '🔨', '再见': '👋',
+    '擦汗': '😅', '抠鼻': '🤏', '鼓掌': '👏', '糗大了': '😳', '坏笑': '😏',
+    '左哼哼': '😤', '右哼哼': '😤', '哈欠': '🥱', '鄙视': '😒', '委屈': '😢',
+    '快哭了': '🥺', '阴险': '😈', '亲亲': '😘', '吓': '😨', '可怜': '🥺',
+    '菜刀': '🔪', '西瓜': '🍉', '啤酒': '🍺', '篮球': '🏀', '乒乓': '🏓',
+    '咖啡': '☕', '饭': '🍚', '猪头': '🐷', '玫瑰': '🌹', '凋谢': '🥀',
+    '示爱': '💕', '爱心': '❤️', '心碎': '💔', '蛋糕': '🎂', '闪电': '⚡',
+    '炸弹': '💣', '刀': '🔪', '足球': '⚽', '瓢虫': '🐞', '便便': '💩',
+    '月亮': '🌙', '太阳': '☀️', '礼物': '🎁', '拥抱': '🤗', '强': '👍',
+    '弱': '👎', '握手': '🤝', '胜利': '✌️', 'OK': '👌', '抱拳': '🙏',
+    '勾引': '😏', '拳头': '👊', '差劲': '👎', '爱你': '🥰', 'NO': '🙅',
+    '爱情': '💑', '飞吻': '😘', '跳跳': '🦘', '发抖': '😰', '怄火': '😤',
+    '转圈': '🔄', '磕头': '🙇', '回头': '↩️', '跳绳': '🤸', '挥手': '👋',
+    '激动': '🥳', '街舞': '💃', '献吻': '😘', '左太极': '☯️', '右太极': '☯️',
+    '嘿哈': '😆', '捂脸': '🤦', '奸笑': '😏', '机智': '🧠', '皱眉': '😟',
+    '耶': '✌️', '红包': '🧧', '發': '🀄', '福': '🧧', '烟花': '🎆',
+    '爆竹': '🧨', '猪': '🐷', '破涕为笑': '😂', '笑脸': '😊', '生病': '🤒',
+    '合十': '🙏', '加油': '💪', '汗': '😓', '天啊': '😱', '社会社会': '🤙',
+    '旺柴': '🐕', '好的': '👌', '打脸': '👋', '加油加油': '💪', '哇': '😮',
+    '發財': '🧧', '無語': '😑', '讚': '👍', '疑惑': '🤔'
+}
+
 # 语气词分类
 MODAL_WORDS = {
     '亲密/撒娇': ['嘛', '呀', '啦', '哒', '嘿嘿', '嘻嘻', '呐', '咯', '鸭', '呢'],
@@ -37,14 +67,24 @@ VOCAB_LEVELS = {
     '网络流行语': ['yyds', '绝绝子', '无语子', '真的会谢', 'awsl', '笑死', 'xswl', '破防', '上头', '下头', '社死', '摆烂', 'duck不必', '蚌埠住', '芭比Q', '栓Q', '小丑竟是我', '绷不住', 'emo', '我裂开', '麻了', '蒜了', '红温', 'CPU', '确实', '6'],
 }
 
+# 常用词
+COMMON_WORDS = ['哈哈', '好的', '嗯嗯', '是的', '对', '好', '谢谢', '可以', '行', '没', '不', '了', '啊', '吗', '呢', '吧', '嘛', '哦', '噢', '嗯', '呀', '啦', '呐', '诶', '欸', '哇', '喔', '唉', '哎', '嘿', '咦', '呵']
+
+
 def load_chat_json(filepath):
     """加载私聊JSON文件"""
     with open(filepath, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 
-def analyze_chat_full(data, contact_name=None):
-    """完整分析单个私聊，返回所有指标"""
+def analyze_chat_full(data, contact_name=None, year_filter='2025'):
+    """完整分析单个私聊，返回所有指标
+    
+    Args:
+        data: JSON数据
+        contact_name: 联系人名称
+        year_filter: 年份过滤，默认'2025'，设为None则不过滤
+    """
     session = data.get('session', {})
     messages = data.get('messages', [])
     
@@ -56,6 +96,7 @@ def analyze_chat_full(data, contact_name=None):
     
     # 解析消息
     parsed = []
+    parsed_all = []  # 保留全量用于月度趋势对比
     for m in messages:
         try:
             msg_type = m.get('type', '')
@@ -77,12 +118,18 @@ def analyze_chat_full(data, contact_name=None):
             if not dt:
                 continue
             
-            parsed.append({
+            msg_data = {
                 'time': dt,
                 'type': msg_type,
                 'content': content,
                 'is_me': is_send,
-            })
+            }
+            
+            parsed_all.append(msg_data)
+            
+            # 年份过滤
+            if year_filter is None or dt.strftime('%Y') == str(year_filter):
+                parsed.append(msg_data)
         except:
             continue
     
@@ -90,6 +137,7 @@ def analyze_chat_full(data, contact_name=None):
         return None
     
     parsed.sort(key=lambda x: x['time'])
+    parsed_all.sort(key=lambda x: x['time'])
     
     # ========== 分析各模块 ==========
     result = {'name': contact_name}
@@ -124,8 +172,8 @@ def analyze_chat_full(data, contact_name=None):
     # 10. 会话结构
     result.update(_calc_conversation_structure(parsed))
     
-    # 11. 月度趋势
-    result.update(_calc_monthly_trends(parsed))
+    # 11. 月度趋势（使用全量数据，便于历史对比）
+    result.update(_calc_monthly_trends(parsed_all))
     
     # 12. 关怀与邀约
     result.update(_calc_care_invite(parsed))
@@ -368,7 +416,7 @@ def _calc_time_pattern(msgs):
     weekday_names = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
     
     # 深夜消息 (23:00 - 4:00)
-    late_night = sum(hours.get(h, 0) for h in [23, 0, 1, 2, 3, 4])
+    late_night = sum(hours.get(h, 0) for h in [23, 0, 1, 2, 3, 4, 5])
     
     return {
         'hours': hours,
